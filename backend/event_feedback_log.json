@@ -1,0 +1,42 @@
+[
+  {
+    "feedback_id": "bdeba4f2-ad25-426f-a027-630530f35aec",
+    "event_reference_id": "demo-1",
+    "logged_at": "2026-06-16T14:28:32.217073+00:00",
+    "source": "manual_dashboard",
+    "notes": "Manual post-event estimate using travel delay logs.",
+    "event_payload": {
+      "event_reference_id": "demo-1",
+      "event_cause": "public_event",
+      "priority": "High",
+      "requires_road_closure": true,
+      "latitude": 12.9788,
+      "longitude": 77.5995,
+      "event_type": "planned",
+      "expected_attendance": 18000
+    },
+    "predicted_impact_score": 48.27,
+    "actual_impact_score": 63,
+    "error": 14.73,
+    "breakdown": {
+      "cause_score": 49.53,
+      "priority_score": 37.42,
+      "road_closure_score": 52.27,
+      "hotspot_score": 45.81,
+      "corridor_score": 47.07,
+      "temporal_score": 33.92,
+      "spread_score": 28.0,
+      "event_type_score": 49.38,
+      "weights": {
+        "cause": 0.24,
+        "priority": 0.1,
+        "road_closure": 0.16,
+        "hotspot": 0.2,
+        "corridor": 0.12,
+        "temporal": 0.08,
+        "spread": 0.1
+      },
+      "bias": 0.0
+    }
+  }
+]

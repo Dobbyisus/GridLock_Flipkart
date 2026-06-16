@@ -1,0 +1,24 @@
+{
+  "weights": {
+    "cause": 0.2419,
+    "priority": 0.099,
+    "road_closure": 0.1617,
+    "hotspot": 0.201,
+    "corridor": 0.1206,
+    "temporal": 0.0783,
+    "spread": 0.0976
+  },
+  "bias": 0.2946,
+  "learning_rate": 0.1,
+  "retrain_window_days": 7,
+  "last_retrained_at": "2026-06-16T14:28:32.217073+00:00",
+  "cause_adjustments": {
+    "public_event": 0.221
+  },
+  "last_training_summary": {
+    "samples_used": 1,
+    "mean_error": 14.73,
+    "mean_absolute_error": 14.73,
+    "bias_shift": 0.2946
+  }
+}

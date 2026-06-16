@@ -25,10 +25,6 @@ build/
 *.egg-info/
 
 # Data
-backend/data/
 
 # Temporary testing file
 backend/test.py
-
-backend/learning_state.json
-backend/event_feedback_log.json
