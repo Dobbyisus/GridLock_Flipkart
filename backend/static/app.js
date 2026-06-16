@@ -41,7 +41,6 @@ const elements = {
   eventFeed: document.getElementById("eventFeed"),
   routeResults: document.getElementById("routeResults"),
   timelineBar: document.getElementById("timelineBar"),
-  timelineRange: document.getElementById("timelineRange"),
   windowLabel: document.getElementById("windowLabel"),
   reviewFeed: document.getElementById("reviewFeed"),
   reviewGateText: document.getElementById("reviewGateText"),
@@ -72,6 +71,14 @@ function formatDate(dateText) {
     day: "numeric",
     month: "short",
   });
+}
+
+function timelineParts(dateText) {
+  const date = new Date(`${dateText}T00:00:00`);
+  return {
+    month: date.toLocaleDateString("en-IN", { month: "short" }).toUpperCase(),
+    day: date.toLocaleDateString("en-IN", { day: "2-digit" }),
+  };
 }
 
 function riskBadge(score, riskLevel) {
@@ -136,7 +143,11 @@ async function loadCalendarWindow(windowIndex = 0) {
   state.windowIndex = data.window_index;
   state.totalWindows = data.total_windows;
   state.calendarDates = data.dates;
-  elements.timelineRange.textContent = `${formatDate(data.start_date)} - ${formatDate(data.end_date)}`;
+  const startDate = new Date(`${data.start_date}T00:00:00`);
+  elements.weekSelect.dataset.label = startDate.toLocaleDateString("en-IN", {
+    month: "long",
+    year: "numeric",
+  });
   elements.windowLabel.textContent = `Window ${data.window_index + 1} / ${data.total_windows}`;
   renderWeekSelect();
   renderTimeline();
@@ -160,7 +171,12 @@ async function loadCalendarWindow(windowIndex = 0) {
 function renderWeekSelect() {
   const options = state.calendarWindows.map((window) => {
     const selected = window.window_index === state.windowIndex ? "selected" : "";
-    return `<option value="${window.window_index}" ${selected}>${formatDate(window.start_date)} - ${formatDate(window.end_date)}</option>`;
+    const startDate = new Date(`${window.start_date}T00:00:00`);
+    const label = startDate.toLocaleDateString("en-IN", {
+      month: "long",
+      year: "numeric",
+    });
+    return `<option value="${window.window_index}" ${selected}>${label}</option>`;
   }).join("");
   elements.weekSelect.innerHTML = options;
 }
@@ -199,13 +215,16 @@ async function loadReviewWindow() {
 
 function renderTimeline() {
   elements.timelineBar.innerHTML = state.calendarDates
-    .map((item) => `
-      <button class="timeline-chip ${item.date === state.selectedDate ? "active" : ""} ${state.viewedDates.has(item.date) ? "viewed" : ""}" data-date="${item.date}" type="button" style="box-shadow: inset 0 -3px 0 ${item.color}">
-        <div class="chip-day">${formatDate(item.date)}</div>
-        <div class="chip-score">${item.max_impact_score}</div>
-        <div class="chip-events">${item.event_count} hotspots - ${item.critical_count} critical</div>
-      </button>
-    `)
+    .map((item) => {
+      const parts = timelineParts(item.date);
+      return `
+        <button class="timeline-chip ${item.date === state.selectedDate ? "active" : ""} ${state.viewedDates.has(item.date) ? "viewed" : ""}" data-date="${item.date}" type="button" style="color:${item.color}">
+          <div class="chip-day">${parts.month}</div>
+          <div class="chip-score">${parts.day}</div>
+          <div class="chip-events">&nbsp;</div>
+        </button>
+      `;
+    })
     .join("");
   elements.timelineBar.querySelectorAll(".timeline-chip").forEach((button) => {
     button.addEventListener("click", () => loadDay(button.dataset.date));

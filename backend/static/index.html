@@ -30,8 +30,9 @@
     </header>
 
     <section class="insight-banner" id="insightBanner">
+      <div class="insight-accent"></div>
       <div>
-        <p class="banner-label">Operational Snapshot</p>
+        <p class="banner-label">System Insight</p>
         <h2 id="bannerTitle">Loading city conditions...</h2>
       </div>
       <p id="bannerText">Preparing hotspot feed and field deployment overview.</p>
@@ -183,18 +184,22 @@
 
     <footer class="timeline-shell">
       <div class="timeline-topline">
-        <div class="timeline-controls">
-          <button type="button" class="timeline-nav" id="previousWindowButton">Previous 7 Days</button>
+        <button type="button" class="timeline-arrow" id="previousWindowButton" aria-label="Previous week">‹</button>
+        <div class="timeline-center">
           <label class="week-picker">
-            <span>Jump To Week</span>
-            <select id="weekSelect"></select>
+            <select id="weekSelect" aria-label="Select week"></select>
           </label>
+          <div class="timeline-weekdays" aria-hidden="true">
+            <span>Sun</span>
+            <span>Mon</span>
+            <span>Tue</span>
+            <span>Wed</span>
+            <span>Thu</span>
+            <span>Fri</span>
+            <span>Sat</span>
+          </div>
         </div>
-        <div>
-          <p class="card-label">Date Timeline</p>
-          <h3 id="timelineRange">Loading window...</h3>
-        </div>
-        <button type="button" class="timeline-nav" id="nextWindowButton">Next 7 Days</button>
+        <button type="button" class="timeline-arrow" id="nextWindowButton" aria-label="Next week">›</button>
       </div>
       <div class="timeline-bar" id="timelineBar"></div>
     </footer>
