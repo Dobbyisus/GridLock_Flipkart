@@ -1,8 +1,11 @@
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from scoring import ENGINE, recommend_resources
@@ -13,6 +16,8 @@ app = FastAPI(
     version="2.0.0",
     description="Event impact scoring, manpower recommendation, diversion planning, routing, alerting, and weekly learning.",
 )
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 class PredictionRequest(BaseModel):
@@ -50,6 +55,12 @@ class FeedbackRequest(BaseModel):
     end_longitude: Optional[float] = None
     expected_attendance: Optional[int] = Field(default=None, ge=0)
     actual_impact_score: float = Field(ge=0, le=100)
+    observed_severity: Optional[str] = None
+    observed_crowd_level: Optional[str] = None
+    actual_clearance_minutes: Optional[int] = Field(default=None, ge=0)
+    field_officers_deployed: Optional[int] = Field(default=None, ge=0)
+    field_barricades_used: Optional[int] = Field(default=None, ge=0)
+    diversion_effectiveness: Optional[str] = None
     source: str = "manual_dashboard"
     notes: Optional[str] = None
 
@@ -71,6 +82,11 @@ def root():
     }
 
 
+@app.get("/dashboard", include_in_schema=False)
+def dashboard():
+    return FileResponse(STATIC_DIR / "index.html")
+
+
 @app.get("/health")
 def health():
     return ENGINE.get_health_summary()
@@ -84,6 +100,26 @@ def engine_catalog():
 @app.get("/hotspots")
 def hotspots(limit: int = 10):
     return {"hotspots": ENGINE.get_top_hotspots(limit=limit)}
+
+
+@app.get("/dashboard/calendar")
+def dashboard_calendar(window: int = Query(default=0, ge=0)):
+    return ENGINE.get_calendar_window(window_index=window)
+
+
+@app.get("/dashboard/calendar/windows")
+def dashboard_calendar_windows():
+    return ENGINE.list_calendar_windows()
+
+
+@app.get("/dashboard/day/{date_key}")
+def dashboard_day(date_key: str):
+    return ENGINE.get_day_dashboard(date_key)
+
+
+@app.get("/dashboard/review")
+def dashboard_review(window: int = Query(default=0, ge=0)):
+    return ENGINE.get_review_window(window_index=window)
 
 
 @app.post("/predict")
@@ -174,3 +210,5 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

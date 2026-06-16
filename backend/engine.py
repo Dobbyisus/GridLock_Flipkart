@@ -146,6 +146,9 @@ class GridlockRecommendationEngine:
         self.analytics = self._build_analytics(self.events)
         self.state = self._load_state()
         self.feedback_log = self._load_feedback_log()
+        self.prediction_cache: Dict[str, Dict[str, Any]] = {}
+        self.station_index = self._build_station_index()
+        self.date_index = self._build_date_index()
 
     def _load_events(self) -> List[Dict[str, Any]]:
         events: List[Dict[str, Any]] = []
@@ -189,6 +192,8 @@ class GridlockRecommendationEngine:
                 events.append(
                     {
                         "id": row.get("id") or str(uuid.uuid4()),
+                        "address": clean_text(row.get("address")),
+                        "description": clean_text(row.get("description"), ""),
                         "latitude": latitude,
                         "longitude": longitude,
                         "end_latitude": end_latitude,
@@ -203,6 +208,7 @@ class GridlockRecommendationEngine:
                         "corridor": corridor,
                         "junction": junction,
                         "zone": zone,
+                        "police_station": clean_text(row.get("police_station")),
                         "grid_id": grid_id,
                         "start_datetime": start_dt,
                         "duration_hours": duration_hours,
@@ -373,9 +379,127 @@ class GridlockRecommendationEngine:
         self._save_json(self.feedback_path, [])
         return []
 
+    def _build_station_index(self) -> Dict[str, Dict[str, Any]]:
+        station_groups: Dict[str, Dict[str, Any]] = {}
+        for event in self.events:
+            station_name = clean_text(event.get("police_station"), "Control")
+            bucket = station_groups.setdefault(
+                station_name,
+                {
+                    "name": station_name,
+                    "latitudes": [],
+                    "longitudes": [],
+                    "event_count": 0,
+                },
+            )
+            bucket["latitudes"].append(event["latitude"])
+            bucket["longitudes"].append(event["longitude"])
+            bucket["event_count"] += 1
+        station_index: Dict[str, Dict[str, Any]] = {}
+        for station_name, bucket in station_groups.items():
+            station_index[station_name] = {
+                "station_name": station_name,
+                "latitude": round(sum(bucket["latitudes"]) / len(bucket["latitudes"]), 5),
+                "longitude": round(sum(bucket["longitudes"]) / len(bucket["longitudes"]), 5),
+                "historical_event_count": bucket["event_count"],
+            }
+        return station_index
+
+    def _build_date_index(self) -> Dict[str, Any]:
+        events_by_date: Dict[str, List[Dict[str, Any]]] = {}
+        for event in self.events:
+            if not event["start_datetime"]:
+                continue
+            date_key = event["start_datetime"].date().isoformat()
+            events_by_date.setdefault(date_key, []).append(event)
+        sorted_dates = sorted(events_by_date.keys())
+        windows: List[Dict[str, Any]] = []
+        for start in range(0, len(sorted_dates), 7):
+            chunk = sorted_dates[start : start + 7]
+            windows.append(
+                {
+                    "window_index": len(windows),
+                    "start_date": chunk[0],
+                    "end_date": chunk[-1],
+                    "dates": chunk,
+                }
+            )
+        return {"events_by_date": events_by_date, "sorted_dates": sorted_dates, "windows": windows}
+
     def _save_json(self, path: Path, payload: Any) -> None:
         with path.open("w", encoding="utf-8") as file_obj:
             json.dump(payload, file_obj, indent=2)
+
+    def _score_color(self, score: float) -> str:
+        if score >= 82.0:
+            return "#ff5a36"
+        if score >= 64.0:
+            return "#ff8c1a"
+        if score >= 42.0:
+            return "#f5c04a"
+        return "#40c4aa"
+
+    def _predict_event_record(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        cached = self.prediction_cache.get(event["id"])
+        if cached:
+            return cached
+        prediction = self.predict(
+            event_cause=event["event_cause"],
+            priority=event["priority"],
+            requires_road_closure=event["requires_road_closure"],
+            latitude=event["latitude"],
+            longitude=event["longitude"],
+            event_type=event["event_type"],
+            start_datetime=event["start_datetime"],
+            end_latitude=event["end_latitude"],
+            end_longitude=event["end_longitude"],
+        )
+        self.prediction_cache[event["id"]] = prediction
+        return prediction
+
+    def _station_payload(self, station_name: str) -> Dict[str, Any]:
+        return self.station_index.get(
+            clean_text(station_name, "Control"),
+            {
+                "station_name": "Control",
+                "latitude": BENGALURU_CENTER[0],
+                "longitude": BENGALURU_CENTER[1],
+                "historical_event_count": 0,
+            },
+        )
+
+    def _event_dashboard_payload(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        prediction = self._predict_event_record(event)
+        station = self._station_payload(event.get("police_station", "Control"))
+        impact_score = prediction["impact_score"]
+        return {
+            "event_id": event["id"],
+            "title": clean_text(event["description"], event["event_cause"].replace("_", " ").title()),
+            "date": event["start_datetime"].date().isoformat() if event["start_datetime"] else None,
+            "time": event["start_datetime"].strftime("%H:%M") if event["start_datetime"] else "--:--",
+            "address": event["address"],
+            "event_cause": event["event_cause"],
+            "priority": event["priority"],
+            "event_type": event["event_type"],
+            "status": event["status"],
+            "latitude": event["latitude"],
+            "longitude": event["longitude"],
+            "end_latitude": event["end_latitude"],
+            "end_longitude": event["end_longitude"],
+            "corridor": event["corridor"],
+            "junction": event["junction"],
+            "zone": event["zone"],
+            "requires_road_closure": event["requires_road_closure"],
+            "police_station": station,
+            "impact_score": impact_score,
+            "impact_color": self._score_color(impact_score),
+            "risk_level": prediction["risk_level"],
+            "resource_plan": prediction["resource_plan"],
+            "diversion_required": prediction["diversion_required"],
+            "diversion_suggestions": prediction["diversion_suggestions"],
+            "alert": prediction["alert"],
+            "breakdown": prediction["breakdown"],
+        }
 
     def get_catalog(self) -> Dict[str, Any]:
         return {
@@ -384,6 +508,8 @@ class GridlockRecommendationEngine:
             "alert_thresholds": ALERT_THRESHOLDS,
             "weights": self.state["weights"],
             "retrain_window_days": self.state["retrain_window_days"],
+            "available_day_count": len(self.date_index["sorted_dates"]),
+            "available_windows": len(self.date_index["windows"]),
         }
 
     def get_health_summary(self) -> Dict[str, Any]:
@@ -413,6 +539,130 @@ class GridlockRecommendationEngine:
                 }
             )
         return hotspots
+
+    def get_calendar_window(self, window_index: int = 0) -> Dict[str, Any]:
+        windows = self.date_index["windows"]
+        if not windows:
+            return {"window_index": 0, "total_windows": 0, "dates": []}
+        safe_index = max(0, min(window_index, len(windows) - 1))
+        window = windows[safe_index]
+        date_cards: List[Dict[str, Any]] = []
+        for date_key in window["dates"]:
+            day_events = self.date_index["events_by_date"].get(date_key, [])
+            dashboard_events = [self._event_dashboard_payload(event) for event in day_events]
+            if dashboard_events:
+                max_score = max(item["impact_score"] for item in dashboard_events)
+                critical_count = sum(
+                    1 for item in dashboard_events if item["risk_level"] == "Critical"
+                )
+            else:
+                max_score = 0.0
+                critical_count = 0
+            date_cards.append(
+                {
+                    "date": date_key,
+                    "event_count": len(dashboard_events),
+                    "critical_count": critical_count,
+                    "max_impact_score": round(max_score, 2),
+                    "color": self._score_color(max_score),
+                }
+            )
+        return {
+            "window_index": safe_index,
+            "total_windows": len(windows),
+            "start_date": window["start_date"],
+            "end_date": window["end_date"],
+            "dates": date_cards,
+        }
+
+    def list_calendar_windows(self) -> Dict[str, Any]:
+        return {
+            "total_windows": len(self.date_index["windows"]),
+            "windows": [
+                {
+                    "window_index": window["window_index"],
+                    "start_date": window["start_date"],
+                    "end_date": window["end_date"],
+                }
+                for window in self.date_index["windows"]
+            ],
+        }
+
+    def get_day_dashboard(self, date_key: str) -> Dict[str, Any]:
+        day_events = self.date_index["events_by_date"].get(date_key, [])
+        dashboard_events = [self._event_dashboard_payload(event) for event in day_events]
+        dashboard_events.sort(
+            key=lambda item: (item["impact_score"], item["priority"] == "High"),
+            reverse=True,
+        )
+        police_markers = []
+        seen_stations = set()
+        for event in dashboard_events:
+            station_name = event["police_station"]["station_name"]
+            if station_name in seen_stations:
+                continue
+            seen_stations.add(station_name)
+            police_markers.append(event["police_station"])
+        summary = {
+            "date": date_key,
+            "event_count": len(dashboard_events),
+            "critical_count": sum(
+                1 for event in dashboard_events if event["risk_level"] == "Critical"
+            ),
+            "high_or_above": sum(
+                1 for event in dashboard_events if event["impact_score"] >= 64.0
+            ),
+            "average_impact_score": round(
+                sum(event["impact_score"] for event in dashboard_events) / len(dashboard_events),
+                2,
+            )
+            if dashboard_events
+            else 0.0,
+        }
+        return {
+            "summary": summary,
+            "events": dashboard_events,
+            "police_markers": police_markers,
+        }
+
+    def get_review_window(self, window_index: int = 0) -> Dict[str, Any]:
+        calendar = self.get_calendar_window(window_index)
+        review_events: List[Dict[str, Any]] = []
+        for date_card in calendar["dates"]:
+            for event in self.get_day_dashboard(date_card["date"])["events"]:
+                review_events.append(
+                    {
+                        "event_id": event["event_id"],
+                        "title": event["title"],
+                        "date": event["date"],
+                        "time": event["time"],
+                        "event_cause": event["event_cause"],
+                        "priority": event["priority"],
+                        "requires_road_closure": event["requires_road_closure"],
+                        "latitude": event["latitude"],
+                        "longitude": event["longitude"],
+                        "event_type": event["event_type"],
+                        "end_latitude": event["end_latitude"],
+                        "end_longitude": event["end_longitude"],
+                        "corridor": event["corridor"],
+                        "zone": event["zone"],
+                        "predicted_impact_score": event["impact_score"],
+                        "predicted_risk_level": event["risk_level"],
+                        "impact_color": event["impact_color"],
+                        "resource_plan": event["resource_plan"],
+                        "dropdown_options": {
+                            "actual_impact_scores": list(range(10, 101, 5)),
+                            "observed_severity": ["Low", "Medium", "High", "Critical"],
+                            "crowd_levels": ["Very Low", "Low", "Medium", "High", "Very High"],
+                        },
+                    }
+                )
+        return {
+            "window_index": calendar["window_index"],
+            "start_date": calendar["start_date"],
+            "end_date": calendar["end_date"],
+            "events": review_events,
+        }
 
     def _temporal_score(self, when: Optional[datetime]) -> float:
         if not when:
