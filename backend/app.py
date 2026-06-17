@@ -17,7 +17,8 @@ app = FastAPI(
     description="Event impact scoring, manpower recommendation, diversion planning, routing, alerting, and weekly learning.",
 )
 
-STATIC_DIR = Path(__file__).resolve().parent / "static"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+FRONTEND_DIR = PROJECT_ROOT / "frontend"
 
 
 class PredictionRequest(BaseModel):
@@ -84,7 +85,7 @@ def root():
 
 @app.get("/dashboard", include_in_schema=False)
 def dashboard():
-    return FileResponse(STATIC_DIR / "index.html")
+    return FileResponse(FRONTEND_DIR / "index.html")
 
 
 @app.get("/health")
@@ -211,4 +212,4 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
