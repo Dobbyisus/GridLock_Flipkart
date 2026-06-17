@@ -1,3 +1,27 @@
+const CORRECTION_HISTORY_KEY = "gridlock-weekly-corrections-v1";
+const MIN_CORRECTION_PANEL_MS = 1200;
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function roundValue(value, digits = 2) {
+  const factor = 10 ** digits;
+  return Math.round(Number(value) * factor) / factor;
+}
+
+function loadCorrectionHistory() {
+  try {
+    const raw = localStorage.getItem(CORRECTION_HISTORY_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return [];
+  }
+}
+
 const state = {
   windowIndex: 0,
   totalWindows: 0,
@@ -6,9 +30,13 @@ const state = {
   viewedDates: new Set(),
   calendarDates: [],
   calendarWindows: [],
+  currentWindow: null,
   dayData: null,
   reviewUnlocked: false,
   routeData: null,
+  correctionHistory: loadCorrectionHistory(),
+  correctionRunning: false,
+  activeCorrectionKey: null,
 };
 
 const map = L.map("map", {
@@ -54,6 +82,15 @@ const elements = {
   dockDiversion: document.getElementById("dockDiversion"),
   dockDiversions: document.getElementById("dockDiversions"),
   toast: document.getElementById("toast"),
+  forceRetrainButton: document.getElementById("forceRetrainButton"),
+  correctionArchive: document.getElementById("correctionArchive"),
+  correctionOverlay: document.getElementById("correctionOverlay"),
+  correctionPanelTitle: document.getElementById("correctionPanelTitle"),
+  correctionPanelText: document.getElementById("correctionPanelText"),
+  correctionProgress: document.getElementById("correctionProgress"),
+  correctionPanelBody: document.getElementById("correctionPanelBody"),
+  correctionCollapseButton: document.getElementById("correctionCollapseButton"),
+  correctionCollapseAction: document.getElementById("correctionCollapseAction"),
 };
 
 function showToast(message) {
@@ -70,6 +107,29 @@ function formatDate(dateText) {
     weekday: "short",
     day: "numeric",
     month: "short",
+  });
+}
+
+function formatShortDate(dateText) {
+  return new Date(`${dateText}T00:00:00`).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function formatDateTime(dateText) {
+  if (!dateText) {
+    return "--";
+  }
+  const date = new Date(dateText);
+  if (Number.isNaN(date.getTime())) {
+    return "--";
+  }
+  return date.toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
   });
 }
 
@@ -90,6 +150,295 @@ function formatWeekRange(startDateText, endDateText) {
     return `${startDate.toLocaleDateString("en-IN", { month: "long" })} ${startDate.getDate()}-${endDate.getDate()}, ${startDate.getFullYear()}`;
   }
   return `${startDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })} - ${endDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`;
+}
+
+function weekKey(windowInfo) {
+  if (!windowInfo) {
+    return "";
+  }
+  return `${windowInfo.startDate}__${windowInfo.endDate}`;
+}
+
+function prettifyLabel(text) {
+  return String(text || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatSigned(value, digits = 2) {
+  const amount = roundValue(value || 0, digits).toFixed(digits);
+  if (Number(amount) > 0) {
+    return `+${amount}`;
+  }
+  return amount;
+}
+
+function persistCorrectionHistory() {
+  try {
+    localStorage.setItem(CORRECTION_HISTORY_KEY, JSON.stringify(state.correctionHistory));
+  } catch (error) {
+    showToast("Correction summary could not be stored locally.");
+  }
+}
+
+function getCurrentWindowInfo() {
+  return state.currentWindow;
+}
+
+function getStoredCorrection(windowInfo = getCurrentWindowInfo()) {
+  const key = weekKey(windowInfo);
+  return state.correctionHistory.find((record) => record.weekKey === key) || null;
+}
+
+function summarizeWeightChanges(beforeState, afterState) {
+  const previousWeights = beforeState?.weights || {};
+  const nextWeights = afterState?.weights || {};
+  return Object.keys(nextWeights)
+    .map((key) => {
+      const beforeValue = Number(previousWeights[key] || 0);
+      const afterValue = Number(nextWeights[key] || 0);
+      return {
+        label: prettifyLabel(key),
+        delta: roundValue(afterValue - beforeValue, 4),
+      };
+    })
+    .filter((item) => Math.abs(item.delta) >= 0.0001)
+    .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta))
+    .slice(0, 3);
+}
+
+function summarizeCauseChanges(beforeState, afterState) {
+  const previousAdjustments = beforeState?.cause_adjustments || {};
+  const nextAdjustments = afterState?.cause_adjustments || {};
+  return Object.keys(nextAdjustments)
+    .map((key) => {
+      const beforeValue = Number(previousAdjustments[key] || 0);
+      const afterValue = Number(nextAdjustments[key] || 0);
+      return {
+        label: prettifyLabel(key),
+        delta: roundValue(afterValue - beforeValue, 3),
+      };
+    })
+    .filter((item) => Math.abs(item.delta) >= 0.01)
+    .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta))
+    .slice(0, 3);
+}
+
+function buildCorrectionRecord(windowInfo, beforeState, result) {
+  const nextState = result?.state || beforeState || {};
+  const trainingSummary = nextState.last_training_summary || {};
+  const samplesUsed = Number(trainingSummary.samples_used || 0);
+  const feedbackRecords = Number(nextState.feedback_records ?? beforeState?.feedback_records ?? 0);
+  const retrained = Boolean(result?.retrained);
+  const headline = retrained
+    ? `${samplesUsed || feedbackRecords} reviewed events tuned the model for ${windowInfo.label}.`
+    : (result?.message || "Weekly correction was reviewed without any model updates.");
+
+  return {
+    weekKey: weekKey(windowInfo),
+    windowIndex: windowInfo.windowIndex,
+    windowLabel: windowInfo.label,
+    startDate: windowInfo.startDate,
+    endDate: windowInfo.endDate,
+    ranAt: new Date().toISOString(),
+    retrained,
+    headline,
+    message: result?.message || "",
+    nextDueAt: result?.next_due_at || null,
+    feedbackRecords,
+    samplesUsed,
+    meanError: retrained ? Number(trainingSummary.mean_error || 0) : null,
+    meanAbsoluteError: retrained ? Number(trainingSummary.mean_absolute_error || 0) : null,
+    biasShift: retrained ? Number(trainingSummary.bias_shift || 0) : null,
+    biasAfter: Number(nextState.bias ?? beforeState?.bias ?? 0),
+    lastRetrainedAt: nextState.last_retrained_at || beforeState?.last_retrained_at || null,
+    weightChanges: retrained && beforeState ? summarizeWeightChanges(beforeState, nextState) : [],
+    causeChanges: retrained && beforeState ? summarizeCauseChanges(beforeState, nextState) : [],
+  };
+}
+
+function upsertCorrectionRecord(record) {
+  const nextHistory = state.correctionHistory.filter((item) => item.weekKey !== record.weekKey);
+  nextHistory.unshift(record);
+  nextHistory.sort((left, right) => {
+    if (left.windowIndex === right.windowIndex) {
+      return new Date(right.ranAt).getTime() - new Date(left.ranAt).getTime();
+    }
+    return left.windowIndex - right.windowIndex;
+  });
+  state.correctionHistory = nextHistory;
+  persistCorrectionHistory();
+  renderCorrectionArchive();
+}
+
+function renderCorrectionArchive() {
+  if (!state.correctionHistory.length) {
+    elements.correctionArchive.innerHTML = "<div class=\"correction-archive-empty\">Weekly correction summaries will stay here once you run them. Each week gets its own info icon for quick recall.</div>";
+    return;
+  }
+
+  elements.correctionArchive.innerHTML = state.correctionHistory
+    .map((record) => {
+      const isActive = record.weekKey === state.activeCorrectionKey;
+      const statusLabel = record.retrained ? "Corrected" : "Checked";
+      return `
+        <button
+          class="correction-history-item ${isActive ? "active" : ""}"
+          data-week-key="${record.weekKey}"
+          type="button"
+          aria-label="Open ${record.windowLabel} correction summary"
+          title="${record.windowLabel} - ${statusLabel}"
+        >
+          <span class="correction-history-icon">i</span>
+          <span class="correction-history-label">${record.windowLabel}</span>
+        </button>
+      `;
+    })
+    .join("");
+
+  elements.correctionArchive.querySelectorAll(".correction-history-item").forEach((button) => {
+    button.addEventListener("click", () => {
+      const record = state.correctionHistory.find((item) => item.weekKey === button.dataset.weekKey);
+      if (!record) {
+        return;
+      }
+      state.activeCorrectionKey = record.weekKey;
+      renderCorrectionArchive();
+      renderCorrectionSummary(record);
+      openCorrectionPanel();
+    });
+  });
+}
+
+function openCorrectionPanel() {
+  elements.correctionOverlay.hidden = false;
+}
+
+function closeCorrectionPanel() {
+  elements.correctionOverlay.hidden = true;
+}
+
+function setCorrectionCollapseEnabled(enabled) {
+  elements.correctionCollapseButton.disabled = !enabled;
+  elements.correctionCollapseAction.disabled = !enabled;
+}
+
+function renderCorrectionLoading(windowInfo) {
+  state.activeCorrectionKey = weekKey(windowInfo);
+  renderCorrectionArchive();
+  elements.correctionPanelTitle.textContent = `Running correction for ${windowInfo.label}`;
+  elements.correctionPanelText.textContent = "Reviewing the logged outcomes, keeping the progress rail live, and preparing the weekly correction summary.";
+  elements.correctionProgress.hidden = false;
+  elements.correctionPanelBody.innerHTML = `
+    <div class="correction-loading-stack" aria-hidden="true">
+      <div class="correction-loading-line"></div>
+      <div class="correction-loading-line"></div>
+      <div class="correction-loading-line"></div>
+    </div>
+  `;
+  setCorrectionCollapseEnabled(false);
+  openCorrectionPanel();
+}
+
+function createCorrectionMetric(label, value) {
+  return `
+    <div class="correction-metric">
+      <span>${label}</span>
+      <strong>${value}</strong>
+    </div>
+  `;
+}
+
+function createCorrectionRows(rows, emptyText) {
+  if (!rows.length) {
+    return `<div class="correction-summary-row"><span>${emptyText}</span><strong>Stable</strong></div>`;
+  }
+  return rows
+    .map((row) => {
+      const deltaClass = row.delta >= 0 ? "correction-delta-positive" : "correction-delta-negative";
+      return `
+        <div class="correction-summary-row">
+          <span>${row.label}</span>
+          <strong class="${deltaClass}">${formatSigned(row.delta, Math.abs(row.delta) >= 1 ? 2 : 3)}</strong>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderCorrectionSummary(record) {
+  const ranAtLabel = formatDateTime(record.ranAt);
+  const metrics = record.retrained
+    ? [
+        createCorrectionMetric("Samples Used", String(record.samplesUsed)),
+        createCorrectionMetric("Mean Error", formatSigned(record.meanError || 0)),
+        createCorrectionMetric("Mean Abs Error", roundValue(record.meanAbsoluteError || 0).toFixed(2)),
+        createCorrectionMetric("Bias Shift", formatSigned(record.biasShift || 0, 3)),
+      ].join("")
+    : [
+        createCorrectionMetric("Week", `${formatShortDate(record.startDate)} - ${formatShortDate(record.endDate)}`),
+        createCorrectionMetric("Feedback Logs", String(record.feedbackRecords)),
+        createCorrectionMetric("Last Sync", record.lastRetrainedAt ? formatDateTime(record.lastRetrainedAt) : "--"),
+        createCorrectionMetric("Status", record.message || "No correction update"),
+      ].join("");
+
+  const summaryClass = record.retrained ? "correction-summary-banner" : "correction-summary-banner is-warning";
+  const nextDue = record.nextDueAt
+    ? `<p class="correction-summary-caption">Next correction window opens around ${formatDateTime(record.nextDueAt)}.</p>`
+    : "";
+
+  elements.correctionPanelTitle.textContent = record.windowLabel;
+  elements.correctionPanelText.textContent = `Saved on ${ranAtLabel}. Collapse this panel any time and reopen it from the info icon archive.`;
+  elements.correctionProgress.hidden = true;
+  elements.correctionPanelBody.innerHTML = `
+    <div class="correction-summary-shell">
+      <div class="${summaryClass}">
+        <p class="correction-summary-title">${record.headline}</p>
+        <p class="correction-summary-caption">${record.retrained ? "The model has been rebalanced using the latest reviewed events for this week." : (record.message || "No model values changed for this week.")}</p>
+        ${nextDue}
+      </div>
+      <div class="correction-summary-grid">
+        ${metrics}
+      </div>
+      <div class="correction-summary-card">
+        <div class="correction-summary-topline">
+          <span class="correction-summary-list-label">Top Weight Shifts</span>
+          <span class="review-meta">${record.retrained ? "Largest model weight changes" : "Awaiting reviewed deltas"}</span>
+        </div>
+        <div class="correction-summary-list">
+          ${createCorrectionRows(record.weightChanges, "No weight changes were large enough to highlight.")}
+        </div>
+      </div>
+      <div class="correction-summary-card">
+        <div class="correction-summary-topline">
+          <span class="correction-summary-list-label">Cause Adjustments</span>
+          <span class="review-meta">${record.retrained ? "Strongest cause-specific tuning" : "No cause adjustments recorded"}</span>
+        </div>
+        <div class="correction-summary-list">
+          ${createCorrectionRows(record.causeChanges, "No cause-level adjustments were recorded for this correction.")}
+        </div>
+      </div>
+    </div>
+  `;
+  setCorrectionCollapseEnabled(true);
+  openCorrectionPanel();
+}
+
+function renderCorrectionFailure(windowInfo, error) {
+  const message = error?.message || "Weekly correction could not be completed.";
+  elements.correctionPanelTitle.textContent = `Correction unavailable for ${windowInfo.label}`;
+  elements.correctionPanelText.textContent = "The progress panel stayed active, but the summary could not be built this time.";
+  elements.correctionProgress.hidden = true;
+  elements.correctionPanelBody.innerHTML = `
+    <div class="correction-summary-shell">
+      <div class="correction-summary-banner is-warning">
+        <p class="correction-summary-title">${message}</p>
+        <p class="correction-summary-caption">Retry the correction once the backend is reachable again. Existing saved week summaries remain available through their info icons.</p>
+      </div>
+    </div>
+  `;
+  setCorrectionCollapseEnabled(true);
+  openCorrectionPanel();
 }
 
 function riskBadge(score, riskLevel) {
@@ -154,10 +503,17 @@ async function loadCalendarWindow(windowIndex = 0) {
   state.windowIndex = data.window_index;
   state.totalWindows = data.total_windows;
   state.calendarDates = data.dates;
-  elements.weekSelect.dataset.label = data.label || formatWeekRange(data.start_date, data.end_date);
+  state.currentWindow = {
+    windowIndex: data.window_index,
+    startDate: data.start_date,
+    endDate: data.end_date,
+    label: data.label || formatWeekRange(data.start_date, data.end_date),
+  };
+  elements.weekSelect.dataset.label = state.currentWindow.label;
   elements.windowLabel.textContent = `Window ${data.window_index + 1} / ${data.total_windows}`;
   renderWeekSelect();
   renderTimeline();
+  renderCorrectionArchive();
   const defaultDate = state.selectedDate && data.dates.some((item) => item.date === state.selectedDate)
     ? state.selectedDate
     : (data.dates[0] ? data.dates[0].date : null);
@@ -527,6 +883,47 @@ function setupTabs() {
   });
 }
 
+async function runWeeklyCorrection() {
+  if (!state.reviewUnlocked) {
+    showToast("Open all 7 dates in the current window to unlock weekly review.");
+    return;
+  }
+  if (!state.currentWindow || state.correctionRunning) {
+    return;
+  }
+
+  state.correctionRunning = true;
+  elements.forceRetrainButton.disabled = true;
+  elements.forceRetrainButton.textContent = "Running Correction...";
+  renderCorrectionLoading(state.currentWindow);
+
+  const learningStatePromise = fetchJson("/learning/state").catch(() => null);
+  const correctionPromise = fetchJson("/learning/retrain", { method: "POST" })
+    .then((result) => ({ ok: true, result }))
+    .catch((error) => ({ ok: false, error }));
+
+  const [, beforeState, correctionResponse] = await Promise.all([
+    delay(MIN_CORRECTION_PANEL_MS),
+    learningStatePromise,
+    correctionPromise,
+  ]);
+
+  state.correctionRunning = false;
+  elements.forceRetrainButton.disabled = false;
+  elements.forceRetrainButton.textContent = "Run Weekly Correction";
+
+  if (!correctionResponse.ok) {
+    renderCorrectionFailure(state.currentWindow, correctionResponse.error);
+    showToast("Unable to run weekly correction.");
+    return;
+  }
+
+  const record = buildCorrectionRecord(state.currentWindow, beforeState, correctionResponse.result);
+  upsertCorrectionRecord(record);
+  renderCorrectionSummary(record);
+  showToast(record.retrained ? "Weekly correction completed." : "Weekly correction checked.");
+}
+
 function setupControls() {
   setupTabs();
   document.getElementById("routeForm").addEventListener("submit", submitRoute);
@@ -562,17 +959,21 @@ function setupControls() {
     state.reviewUnlocked = false;
     await loadCalendarWindow(Number(event.target.value));
   });
-  document.getElementById("forceRetrainButton").addEventListener("click", async () => {
-    try {
-      const result = await fetchJson("/learning/retrain", { method: "POST" });
-      showToast(result.retrained ? "Weekly correction completed." : "No review data available yet.");
-    } catch (error) {
-      showToast("Unable to run weekly correction.");
+  elements.forceRetrainButton.addEventListener("click", runWeeklyCorrection);
+  elements.correctionCollapseButton.addEventListener("click", () => {
+    if (!elements.correctionCollapseButton.disabled) {
+      closeCorrectionPanel();
+    }
+  });
+  elements.correctionCollapseAction.addEventListener("click", () => {
+    if (!elements.correctionCollapseAction.disabled) {
+      closeCorrectionPanel();
     }
   });
 }
 
 async function bootstrap() {
+  renderCorrectionArchive();
   setupControls();
   try {
     await loadCalendarWindowsList();

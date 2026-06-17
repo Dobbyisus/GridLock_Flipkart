@@ -136,6 +136,13 @@
               <p class="card-label">Past Week Events</p>
               <button class="secondary-action" type="button" id="forceRetrainButton">Run Weekly Correction</button>
             </div>
+            <div class="correction-archive-shell">
+              <div class="section-head correction-archive-head">
+                <p class="card-label">Correction Archive</p>
+                <span id="correctionArchiveHint">Each reviewed week stays pinned here.</span>
+              </div>
+              <div class="correction-archive" id="correctionArchive"></div>
+            </div>
             <div class="review-feed" id="reviewFeed"></div>
           </div>
         </section>
@@ -206,6 +213,34 @@
   </div>
 
   <div class="toast" id="toast"></div>
+  <div class="correction-overlay" id="correctionOverlay" hidden>
+    <section class="correction-panel" id="correctionPanel" role="dialog" aria-modal="true" aria-labelledby="correctionPanelTitle">
+      <div class="correction-panel-head">
+        <div>
+          <p class="card-label">Weekly Correction</p>
+          <h3 id="correctionPanelTitle">Running weekly correction</h3>
+        </div>
+        <button
+          class="correction-panel-close"
+          id="correctionCollapseButton"
+          type="button"
+          aria-label="Collapse correction panel to info icon"
+        >
+          i
+        </button>
+      </div>
+      <p class="correction-panel-text" id="correctionPanelText">Preparing correction summary.</p>
+      <div class="correction-progress" id="correctionProgress" aria-hidden="true">
+        <div class="correction-progress-bar"></div>
+      </div>
+      <div class="correction-panel-body" id="correctionPanelBody"></div>
+      <div class="correction-panel-actions">
+        <button class="secondary-action correction-collapse-action" id="correctionCollapseAction" type="button">
+          Collapse to info icon
+        </button>
+      </div>
+    </section>
+  </div>
 
   <script
     src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
