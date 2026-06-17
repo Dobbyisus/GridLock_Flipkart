@@ -626,7 +626,7 @@ textarea {
 }
 
 .week-picker select {
-  min-width: 162px;
+  min-width: 228px;
   height: 28px;
   padding: 0 28px 0 16px;
   border-radius: 10px;
@@ -634,7 +634,7 @@ textarea {
   background: #fff;
   color: var(--navy-900);
   text-align: center;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 700;
   appearance: none;
 }

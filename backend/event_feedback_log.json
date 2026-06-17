@@ -38,5 +38,54 @@
       },
       "bias": 0.0
     }
+  },
+  {
+    "feedback_id": "abdf49a4-8e33-48f4-8f73-0f74fef24e67",
+    "event_reference_id": "FKID006182",
+    "logged_at": "2026-06-17T13:52:58.082783+00:00",
+    "source": "manual_dashboard",
+    "notes": "",
+    "event_payload": {
+      "event_reference_id": "FKID006182",
+      "event_cause": "others",
+      "priority": "High",
+      "requires_road_closure": false,
+      "latitude": 12.9522637,
+      "longitude": 77.5408637,
+      "event_type": "unplanned",
+      "start_datetime": "2023-11-23T06:06:00+05:30",
+      "end_latitude": null,
+      "end_longitude": null,
+      "expected_attendance": null,
+      "observed_severity": "High",
+      "observed_crowd_level": "Medium",
+      "actual_clearance_minutes": 45,
+      "field_officers_deployed": 7,
+      "field_barricades_used": 9,
+      "diversion_effectiveness": "Operator Reviewed"
+    },
+    "predicted_impact_score": 40.39,
+    "actual_impact_score": 90.0,
+    "error": 49.61,
+    "breakdown": {
+      "cause_score": 41.1,
+      "priority_score": 37.42,
+      "road_closure_score": 32.41,
+      "hotspot_score": 41.65,
+      "corridor_score": 39.83,
+      "temporal_score": 33.81,
+      "spread_score": 28.0,
+      "event_type_score": 33.12,
+      "weights": {
+        "cause": 0.2419,
+        "priority": 0.099,
+        "road_closure": 0.1617,
+        "hotspot": 0.201,
+        "corridor": 0.1206,
+        "temporal": 0.0783,
+        "spread": 0.0976
+      },
+      "bias": 0.2946
+    }
   }
 ]

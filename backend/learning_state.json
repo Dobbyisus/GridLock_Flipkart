@@ -1,24 +1,25 @@
 {
   "weights": {
-    "cause": 0.2419,
-    "priority": 0.099,
-    "road_closure": 0.1617,
-    "hotspot": 0.201,
-    "corridor": 0.1206,
-    "temporal": 0.0783,
-    "spread": 0.0976
+    "cause": 0.2465,
+    "priority": 0.0977,
+    "road_closure": 0.162,
+    "hotspot": 0.2043,
+    "corridor": 0.1212,
+    "temporal": 0.0752,
+    "spread": 0.0931
   },
-  "bias": 0.2946,
+  "bias": 0.938,
   "learning_rate": 0.1,
   "retrain_window_days": 7,
-  "last_retrained_at": "2026-06-16T14:28:32.217073+00:00",
+  "last_retrained_at": "2026-06-17T13:53:02.777472+00:00",
   "cause_adjustments": {
-    "public_event": 0.221
+    "public_event": 0.442,
+    "others": 0.744
   },
   "last_training_summary": {
-    "samples_used": 1,
-    "mean_error": 14.73,
-    "mean_absolute_error": 14.73,
-    "bias_shift": 0.2946
+    "samples_used": 2,
+    "mean_error": 32.17,
+    "mean_absolute_error": 32.17,
+    "bias_shift": 0.6434
   }
 }

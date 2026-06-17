@@ -81,6 +81,17 @@ function timelineParts(dateText) {
   };
 }
 
+function formatWeekRange(startDateText, endDateText) {
+  const startDate = new Date(`${startDateText}T00:00:00`);
+  const endDate = new Date(`${endDateText}T00:00:00`);
+  const sameMonth = startDate.getMonth() === endDate.getMonth()
+    && startDate.getFullYear() === endDate.getFullYear();
+  if (sameMonth) {
+    return `${startDate.toLocaleDateString("en-IN", { month: "long" })} ${startDate.getDate()}-${endDate.getDate()}, ${startDate.getFullYear()}`;
+  }
+  return `${startDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })} - ${endDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`;
+}
+
 function riskBadge(score, riskLevel) {
   const background = score >= 82
     ? "#f4d7d2"
@@ -143,11 +154,7 @@ async function loadCalendarWindow(windowIndex = 0) {
   state.windowIndex = data.window_index;
   state.totalWindows = data.total_windows;
   state.calendarDates = data.dates;
-  const startDate = new Date(`${data.start_date}T00:00:00`);
-  elements.weekSelect.dataset.label = startDate.toLocaleDateString("en-IN", {
-    month: "long",
-    year: "numeric",
-  });
+  elements.weekSelect.dataset.label = data.label || formatWeekRange(data.start_date, data.end_date);
   elements.windowLabel.textContent = `Window ${data.window_index + 1} / ${data.total_windows}`;
   renderWeekSelect();
   renderTimeline();
@@ -171,11 +178,7 @@ async function loadCalendarWindow(windowIndex = 0) {
 function renderWeekSelect() {
   const options = state.calendarWindows.map((window) => {
     const selected = window.window_index === state.windowIndex ? "selected" : "";
-    const startDate = new Date(`${window.start_date}T00:00:00`);
-    const label = startDate.toLocaleDateString("en-IN", {
-      month: "long",
-      year: "numeric",
-    });
+    const label = window.label || formatWeekRange(window.start_date, window.end_date);
     return `<option value="${window.window_index}" ${selected}>${label}</option>`;
   }).join("");
   elements.weekSelect.innerHTML = options;

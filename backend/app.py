@@ -8,7 +8,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from scoring import ENGINE, recommend_resources
+try:
+    from .scoring import ENGINE, recommend_resources
+except ImportError:
+    from scoring import ENGINE, recommend_resources
 
 
 app = FastAPI(

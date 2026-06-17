@@ -439,6 +439,16 @@ class GridlockRecommendationEngine:
             return "#f5c04a"
         return "#40c4aa"
 
+    def _format_calendar_window_label(self, start_date_text: str, end_date_text: str) -> str:
+        start_date = datetime.fromisoformat(start_date_text)
+        end_date = datetime.fromisoformat(end_date_text)
+        if (
+            start_date.month == end_date.month
+            and start_date.year == end_date.year
+        ):
+            return f"{start_date.strftime('%B')} {start_date.day}-{end_date.day}, {start_date.year}"
+        return f"{start_date.strftime('%d %b')} - {end_date.strftime('%d %b %Y')}"
+
     def _predict_event_record(self, event: Dict[str, Any]) -> Dict[str, Any]:
         cached = self.prediction_cache.get(event["id"])
         if cached:
@@ -572,6 +582,7 @@ class GridlockRecommendationEngine:
             "total_windows": len(windows),
             "start_date": window["start_date"],
             "end_date": window["end_date"],
+            "label": self._format_calendar_window_label(window["start_date"], window["end_date"]),
             "dates": date_cards,
         }
 
@@ -583,6 +594,7 @@ class GridlockRecommendationEngine:
                     "window_index": window["window_index"],
                     "start_date": window["start_date"],
                     "end_date": window["end_date"],
+                    "label": self._format_calendar_window_label(window["start_date"], window["end_date"]),
                 }
                 for window in self.date_index["windows"]
             ],

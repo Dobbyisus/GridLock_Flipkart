@@ -1,7 +1,10 @@
 from datetime import datetime
 from typing import Optional
 
-from engine import GridlockRecommendationEngine
+try:
+    from .engine import GridlockRecommendationEngine
+except ImportError:
+    from engine import GridlockRecommendationEngine
 
 
 ENGINE = GridlockRecommendationEngine()
