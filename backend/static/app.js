@@ -17,7 +17,7 @@ const map = L.map("map", {
 }).setView([12.9716, 77.5946], 11);
 
 L.control.zoom({ position: "bottomright" }).addTo(map);
-L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
   attribution: "&copy; OpenStreetMap &copy; CARTO",
   maxZoom: 19,
 }).addTo(map);
@@ -83,24 +83,24 @@ function timelineParts(dateText) {
 
 function riskBadge(score, riskLevel) {
   const background = score >= 82
-    ? "rgba(255,90,54,.18)"
+    ? "#f4d7d2"
     : score >= 64
-      ? "rgba(255,122,24,.18)"
+      ? "#f0ddd0"
       : score >= 42
-        ? "rgba(245,192,74,.18)"
-        : "rgba(64,196,170,.18)";
+        ? "#f5e6b8"
+        : "#d8ecdf";
   const color = score >= 82
-    ? "#ff7f68"
+    ? "#bb4d43"
     : score >= 64
-      ? "#ffb072"
+      ? "#d16d3f"
       : score >= 42
-        ? "#f7d37d"
-        : "#79d6c5";
+        ? "#9a7416"
+        : "#3f8a5d";
   return `<span class="risk-badge" style="background:${background};color:${color}">${riskLevel}</span>`;
 }
 
 function impactBadge(score, color) {
-  return `<span class="impact-badge" style="background:${color}22;color:${color}">${score}</span>`;
+  return `<span class="impact-badge" style="background:#f2ece2;color:${color};border:1px solid #ddd1bf">${score}</span>`;
 }
 
 function createHotspotIcon(color) {
@@ -218,7 +218,7 @@ function renderTimeline() {
     .map((item) => {
       const parts = timelineParts(item.date);
       return `
-        <button class="timeline-chip ${item.date === state.selectedDate ? "active" : ""} ${state.viewedDates.has(item.date) ? "viewed" : ""}" data-date="${item.date}" type="button" style="color:${item.color}">
+        <button class="timeline-chip ${item.date === state.selectedDate ? "active" : ""} ${state.viewedDates.has(item.date) ? "viewed" : ""}" data-date="${item.date}" type="button">
           <div class="chip-day">${parts.month}</div>
           <div class="chip-score">${parts.day}</div>
           <div class="chip-events">&nbsp;</div>
