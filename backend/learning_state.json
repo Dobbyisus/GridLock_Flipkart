@@ -1,20 +1,20 @@
 {
   "weights": {
-    "cause": 0.2829,
-    "priority": 0.0873,
-    "road_closure": 0.1645,
-    "hotspot": 0.2302,
-    "corridor": 0.1264,
-    "temporal": 0.0507,
-    "spread": 0.0579
+    "cause": 0.2887,
+    "priority": 0.0856,
+    "road_closure": 0.1649,
+    "hotspot": 0.2344,
+    "corridor": 0.1272,
+    "temporal": 0.0468,
+    "spread": 0.0523
   },
-  "bias": 5.4418,
+  "bias": 6.0852,
   "learning_rate": 0.1,
   "retrain_window_days": 7,
-  "last_retrained_at": "2026-06-17T18:03:15.823386+00:00",
+  "last_retrained_at": "2026-06-18T15:45:16.338661+00:00",
   "cause_adjustments": {
-    "public_event": 1.989,
-    "others": 5.952
+    "public_event": 2.21,
+    "others": 6.696
   },
   "last_training_summary": {
     "samples_used": 2,

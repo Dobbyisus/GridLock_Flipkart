@@ -174,6 +174,7 @@
           <div><span class="legend-dot station"></span> Police Station</div>
         </div>
         <div class="floating-controls">
+          <button type="button" id="addEventButton">Add Event</button>
           <button type="button" id="fitCityButton">Fit City</button>
           <button type="button" id="focusHotspotButton">Focus Hotspot</button>
         </div>
@@ -228,6 +229,67 @@
   </div>
 
   <div class="toast" id="toast"></div>
+  <div class="manual-event-overlay" id="manualEventOverlay" hidden>
+    <section class="manual-event-modal" role="dialog" aria-modal="true" aria-labelledby="manualEventTitleHeading">
+      <div class="manual-event-head">
+        <div>
+          <p class="card-label">Operator Event</p>
+          <h3 id="manualEventTitleHeading">Add manual event</h3>
+          <p class="manual-event-subtext">Saved to the currently selected date and scored using the GridLock engine.</p>
+        </div>
+        <button class="manual-event-close" id="manualEventCloseButton" type="button" aria-label="Close add event panel">×</button>
+      </div>
+      <form class="manual-event-form" id="manualEventForm">
+        <div class="manual-event-grid">
+          <label>
+            Selected Date
+            <input type="text" id="manualEventDateLabel" readonly />
+          </label>
+          <label>
+            Start Time
+            <input type="time" name="time" id="manualEventTime" required />
+          </label>
+          <label class="manual-event-span-2">
+            Event Title
+            <input type="text" name="title" id="manualEventTitle" maxlength="120" placeholder="Roadshow near MG Road" required />
+          </label>
+          <label class="manual-event-span-2">
+            Bengaluru Location / Landmark
+            <input type="text" name="address" id="manualEventAddress" list="manualEventLocationHints" maxlength="180" placeholder="MG Road Metro Exit, Bengaluru" required />
+            <datalist id="manualEventLocationHints"></datalist>
+          </label>
+          <label>
+            Event Cause
+            <select name="event_cause" id="manualEventCause"></select>
+          </label>
+          <label>
+            Priority
+            <select name="priority" id="manualEventPriority">
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+              <option value="Critical">Critical</option>
+            </select>
+          </label>
+          <label>
+            Expected Attendance
+            <input type="number" name="expected_attendance" id="manualEventAttendance" min="0" placeholder="Optional" />
+          </label>
+          <label class="manual-event-checkbox">
+            <input type="checkbox" name="requires_road_closure" id="manualEventClosure" />
+            <span>Requires road closure</span>
+          </label>
+        </div>
+        <div class="manual-event-toolbar">
+          <span id="manualEventPickHint">Use a Bengaluru road, junction, metro stop, area, or police station name.</span>
+        </div>
+        <div class="manual-event-actions">
+          <button class="secondary-action" id="manualEventCancelButton" type="button">Cancel</button>
+          <button class="primary-action" id="manualEventSubmitButton" type="submit">Save Event</button>
+        </div>
+      </form>
+    </section>
+  </div>
   <div class="correction-overlay" id="correctionOverlay" hidden>
     <section class="correction-panel" id="correctionPanel" role="dialog" aria-modal="true" aria-labelledby="correctionPanelTitle">
       <div class="correction-panel-head">
@@ -262,7 +324,7 @@
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
     crossorigin=""
   ></script>
-  <script src="/static/app.js?v=route-hotspot-v7"></script>
+  <script src="/static/app.js?v=manual-events-v1"></script>
 </body>
 </html>
 

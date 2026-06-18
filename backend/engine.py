@@ -1,6 +1,7 @@
 import csv
 import json
 import math
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from heapq import heappop, heappush
@@ -17,6 +18,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_PATH = BASE_DIR / "data" / "ProblemStatement2_Data_Gridlock.csv"
 STATE_PATH = BASE_DIR / "learning_state.json"
 FEEDBACK_PATH = BASE_DIR / "event_feedback_log.json"
+MANUAL_EVENTS_PATH = BASE_DIR / "manual_events.json"
 
 BENGALURU_CENTER = (12.9716, 77.5946)
 
@@ -147,14 +149,17 @@ class GridlockRecommendationEngine:
         self.data_path = data_path
         self.state_path = state_path
         self.feedback_path = feedback_path
+        self.manual_events_path = MANUAL_EVENTS_PATH
         self.events = self._load_events()
+        self.manual_events = self._load_manual_events()
         self.analytics = self._build_analytics(self.events)
         self.state = self._load_state()
         self.feedback_log = self._load_feedback_log()
         self.prediction_cache: Dict[str, Dict[str, Any]] = {}
         self.station_index = self._build_station_index()
         self.date_index = self._build_date_index()
-        self.event_lookup = {event["id"]: event for event in self.events}
+        self.event_lookup = self._build_event_lookup()
+        self.location_reference_points = self._build_location_reference_points()
         self.google_routes_client = GoogleRoutesClient(BASE_DIR.parent)
 
     def _load_events(self) -> List[Dict[str, Any]]:
@@ -386,6 +391,169 @@ class GridlockRecommendationEngine:
         self._save_json(self.feedback_path, [])
         return []
 
+    def _parse_manual_event_datetime(self, value: Any) -> Optional[datetime]:
+        if not value:
+            return None
+        try:
+            dt = datetime.fromisoformat(str(value).strip())
+        except ValueError:
+            return None
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=INDIA_TZ)
+        return dt
+
+    def _load_manual_events(self) -> List[Dict[str, Any]]:
+        if not self.manual_events_path.exists():
+            self._save_json(self.manual_events_path, [])
+            return []
+        try:
+            raw_events = json.loads(self.manual_events_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        events: List[Dict[str, Any]] = []
+        for row in raw_events:
+            latitude = safe_float(row.get("latitude"))
+            longitude = safe_float(row.get("longitude"))
+            start_dt = self._parse_manual_event_datetime(row.get("start_datetime"))
+            if latitude is None or longitude is None or start_dt is None:
+                continue
+            end_latitude = safe_float(row.get("end_latitude"))
+            end_longitude = safe_float(row.get("end_longitude"))
+            events.append(
+                {
+                    "id": clean_text(row.get("id"), f"MANUAL_{uuid.uuid4().hex[:10].upper()}"),
+                    "address": clean_text(row.get("address")),
+                    "description": clean_text(row.get("description")),
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "end_latitude": end_latitude,
+                    "end_longitude": end_longitude,
+                    "event_cause": clean_text(row.get("event_cause"), "others").lower(),
+                    "priority": clean_text(row.get("priority"), "Low").title(),
+                    "requires_road_closure": safe_bool(row.get("requires_road_closure")),
+                    "event_type": clean_text(row.get("event_type"), "planned").lower(),
+                    "status": clean_text(row.get("status"), "scheduled").lower(),
+                    "corridor": clean_text(row.get("corridor")),
+                    "junction": clean_text(row.get("junction")),
+                    "zone": clean_text(row.get("zone")),
+                    "police_station": clean_text(row.get("police_station"), "Control"),
+                    "grid_id": clean_text(row.get("grid_id"), f"{round(latitude, 2):.2f}_{round(longitude, 2):.2f}"),
+                    "start_datetime": start_dt,
+                    "duration_hours": safe_float(row.get("duration_hours")),
+                    "path_distance_km": safe_float(row.get("path_distance_km"), 0.0) or 0.0,
+                    "expected_attendance": int(row["expected_attendance"]) if row.get("expected_attendance") not in (None, "") else None,
+                    "event_source": "manual",
+                }
+            )
+        return events
+
+    def _serialize_manual_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "id": event["id"],
+            "address": event["address"],
+            "description": event["description"],
+            "latitude": event["latitude"],
+            "longitude": event["longitude"],
+            "end_latitude": event["end_latitude"],
+            "end_longitude": event["end_longitude"],
+            "event_cause": event["event_cause"],
+            "priority": event["priority"],
+            "requires_road_closure": event["requires_road_closure"],
+            "event_type": event["event_type"],
+            "status": event["status"],
+            "corridor": event["corridor"],
+            "junction": event["junction"],
+            "zone": event["zone"],
+            "police_station": event["police_station"],
+            "grid_id": event["grid_id"],
+            "start_datetime": event["start_datetime"].isoformat() if event["start_datetime"] else None,
+            "duration_hours": event["duration_hours"],
+            "path_distance_km": event["path_distance_km"],
+            "expected_attendance": event.get("expected_attendance"),
+        }
+
+    def _save_manual_events(self) -> None:
+        self._save_json(
+            self.manual_events_path,
+            [self._serialize_manual_event(event) for event in self.manual_events],
+        )
+
+    def _build_event_lookup(self) -> Dict[str, Dict[str, Any]]:
+        lookup = {event["id"]: event for event in self.events}
+        lookup.update({event["id"]: event for event in self.manual_events})
+        return lookup
+
+    def _location_tokens(self, value: str) -> List[str]:
+        stopwords = {
+            "bengaluru",
+            "bangalore",
+            "india",
+            "karnataka",
+            "road",
+            "main",
+            "near",
+            "opp",
+            "opposite",
+            "beside",
+            "street",
+            "layout",
+            "area",
+            "gate",
+            "station",
+        }
+        return [
+            token
+            for token in re.findall(r"[a-z0-9]+", clean_text(value, "").lower())
+            if len(token) >= 3 and token not in stopwords
+        ]
+
+    def _build_location_reference_points(self) -> List[Dict[str, Any]]:
+        references: Dict[str, Dict[str, Any]] = {}
+        for event in self.events:
+            labels = {
+                clean_text(event.get("address"), ""): 1.0,
+                clean_text(event.get("junction"), ""): 0.92,
+                clean_text(event.get("corridor"), ""): 0.84,
+                clean_text(event.get("zone"), ""): 0.8,
+                clean_text(event.get("police_station"), ""): 0.76,
+            }
+            for label, weight in labels.items():
+                if not label or label == "Unknown":
+                    continue
+                key = label.lower()
+                bucket = references.setdefault(
+                    key,
+                    {
+                        "label": label,
+                        "tokens": set(self._location_tokens(label)),
+                        "latitudes": [],
+                        "longitudes": [],
+                        "weight": weight,
+                        "count": 0,
+                    },
+                )
+                bucket["latitudes"].append(event["latitude"])
+                bucket["longitudes"].append(event["longitude"])
+                bucket["weight"] = max(bucket["weight"], weight)
+                bucket["count"] += 1
+        points: List[Dict[str, Any]] = []
+        for reference in references.values():
+            if not reference["tokens"]:
+                continue
+            points.append(
+                {
+                    "label": reference["label"],
+                    "label_lower": reference["label"].lower(),
+                    "tokens": reference["tokens"],
+                    "latitude": round(sum(reference["latitudes"]) / len(reference["latitudes"]), 6),
+                    "longitude": round(sum(reference["longitudes"]) / len(reference["longitudes"]), 6),
+                    "weight": reference["weight"],
+                    "count": reference["count"],
+                }
+            )
+        points.sort(key=lambda item: (item["weight"], item["count"], len(item["tokens"])), reverse=True)
+        return points
+
     def _build_station_index(self) -> Dict[str, Dict[str, Any]]:
         station_groups: Dict[str, Dict[str, Any]] = {}
         for event in self.events:
@@ -470,6 +638,7 @@ class GridlockRecommendationEngine:
             start_datetime=event["start_datetime"],
             end_latitude=event["end_latitude"],
             end_longitude=event["end_longitude"],
+            expected_attendance=event.get("expected_attendance"),
         )
         self.prediction_cache[event["id"]] = prediction
         return prediction
@@ -519,12 +688,14 @@ class GridlockRecommendationEngine:
             "diversion_suggestions": prediction["diversion_suggestions"],
             "alert": prediction["alert"],
             "breakdown": prediction["breakdown"],
+            "event_source": event.get("event_source", "historical"),
         }
 
     def get_catalog(self) -> Dict[str, Any]:
         return {
             "known_event_causes": [name for name, _ in self.analytics["top_causes"]],
             "known_corridors": [name for name, _ in self.analytics["top_corridors"][:20]],
+            "known_locations": self._location_suggestions(),
             "alert_thresholds": ALERT_THRESHOLDS,
             "weights": self.state["weights"],
             "retrain_window_days": self.state["retrain_window_days"],
@@ -560,6 +731,126 @@ class GridlockRecommendationEngine:
             )
         return hotspots
 
+    def _geocode_location_text(self, location_text: str) -> Tuple[float, float]:
+        query = clean_text(location_text, "")
+        query_tokens = set(self._location_tokens(query))
+        if not query_tokens:
+            raise ValueError("Please enter a recognizable Bengaluru location or landmark.")
+        query_lower = query.lower()
+        best_match = None
+        best_score = 0.0
+        for candidate in self.location_reference_points:
+            overlap = query_tokens & candidate["tokens"]
+            if not overlap:
+                continue
+            token_precision = len(overlap) / len(query_tokens)
+            token_recall = len(overlap) / len(candidate["tokens"])
+            score = (token_precision * 0.62) + (token_recall * 0.28) + (candidate["weight"] * 0.10)
+            if candidate["label_lower"] in query_lower or query_lower in candidate["label_lower"]:
+                score += 0.24
+            if score > best_score:
+                best_score = score
+                best_match = candidate
+        if not best_match or best_score < 0.48:
+            raise ValueError(
+                "Location could not be matched confidently. Try a known Bengaluru landmark, corridor, junction, or police station."
+            )
+        return best_match["latitude"], best_match["longitude"]
+
+    def _location_suggestions(self, limit: int = 120) -> List[str]:
+        suggestions = []
+        seen = set()
+        for candidate in self.location_reference_points:
+            label = candidate["label"]
+            if label.lower() in seen:
+                continue
+            seen.add(label.lower())
+            suggestions.append(label)
+            if len(suggestions) >= limit:
+                break
+        return suggestions
+
+    def _events_for_date(self, date_key: str) -> List[Dict[str, Any]]:
+        historical_events = list(self.date_index["events_by_date"].get(date_key, []))
+        manual_events = [
+            event
+            for event in self.manual_events
+            if event["start_datetime"] and event["start_datetime"].date().isoformat() == date_key
+        ]
+        return historical_events + manual_events
+
+    def _nearest_station_name_for_coordinates(self, latitude: float, longitude: float) -> str:
+        nearest_station_name = "Control"
+        nearest_distance = float("inf")
+        for station_name, station in self.station_index.items():
+            distance_km = haversine_km(
+                (latitude, longitude),
+                (station["latitude"], station["longitude"]),
+            )
+            if distance_km < nearest_distance:
+                nearest_distance = distance_km
+                nearest_station_name = station_name
+        return nearest_station_name
+
+    def _nearest_zone_for_coordinates(self, latitude: float, longitude: float) -> str:
+        nearest_zone = "Zone unavailable"
+        nearest_distance = float("inf")
+        for event in self.events:
+            distance_km = haversine_km((latitude, longitude), (event["latitude"], event["longitude"]))
+            if distance_km < nearest_distance:
+                nearest_distance = distance_km
+                nearest_zone = clean_text(event.get("zone"), "Zone unavailable")
+        return nearest_zone
+
+    def create_manual_event(
+        self,
+        *,
+        date: str,
+        time_text: str,
+        title: str,
+        address: str,
+        event_cause: str,
+        priority: str,
+        requires_road_closure: bool,
+        event_type: str = "planned",
+        expected_attendance: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        scheduled_local = datetime.fromisoformat(f"{date}T{time_text}:00").replace(tzinfo=INDIA_TZ)
+        latitude, longitude = self._geocode_location_text(address)
+        corridor_score, corridor_name = self._corridor_score(latitude, longitude)
+        station_name = self._nearest_station_name_for_coordinates(latitude, longitude)
+        event_id = f"MANUAL_{uuid.uuid4().hex[:10].upper()}"
+        event = {
+            "id": event_id,
+            "address": clean_text(address),
+            "description": clean_text(title, "Manual Event"),
+            "latitude": round(float(latitude), 6),
+            "longitude": round(float(longitude), 6),
+            "end_latitude": None,
+            "end_longitude": None,
+            "event_cause": clean_text(event_cause, "others").lower(),
+            "priority": clean_text(priority, "Low").title(),
+            "requires_road_closure": bool(requires_road_closure),
+            "event_type": clean_text(event_type, "planned").lower(),
+            "status": "scheduled",
+            "corridor": corridor_name,
+            "junction": corridor_name,
+            "zone": self._nearest_zone_for_coordinates(latitude, longitude),
+            "police_station": station_name,
+            "grid_id": f"{round(latitude, 2):.2f}_{round(longitude, 2):.2f}",
+            "start_datetime": scheduled_local,
+            "duration_hours": None,
+            "path_distance_km": 0.0,
+            "expected_attendance": expected_attendance,
+            "event_source": "manual",
+            "corridor_score_hint": corridor_score,
+        }
+        self.manual_events.append(event)
+        self.event_lookup[event_id] = event
+        self.prediction_cache.pop(event_id, None)
+        self._save_manual_events()
+        return self._event_dashboard_payload(event)
+
     def get_calendar_window(self, window_index: int = 0) -> Dict[str, Any]:
         windows = self.date_index["windows"]
         if not windows:
@@ -568,7 +859,7 @@ class GridlockRecommendationEngine:
         window = windows[safe_index]
         date_cards: List[Dict[str, Any]] = []
         for date_key in window["dates"]:
-            day_events = self.date_index["events_by_date"].get(date_key, [])
+            day_events = self._events_for_date(date_key)
             dashboard_events = [self._event_dashboard_payload(event) for event in day_events]
             if dashboard_events:
                 max_score = max(item["impact_score"] for item in dashboard_events)
@@ -611,7 +902,7 @@ class GridlockRecommendationEngine:
         }
 
     def get_day_dashboard(self, date_key: str) -> Dict[str, Any]:
-        day_events = self.date_index["events_by_date"].get(date_key, [])
+        day_events = self._events_for_date(date_key)
         dashboard_events = [self._event_dashboard_payload(event) for event in day_events]
         dashboard_events.sort(
             key=lambda item: (item["impact_score"], item["priority"] == "High"),

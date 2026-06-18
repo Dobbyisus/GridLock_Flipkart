@@ -27,6 +27,7 @@ function loadCorrectionHistory() {
 }
 
 const state = {
+  engineCatalog: null,
   windowIndex: 0,
   totalWindows: 0,
   selectedDate: null,
@@ -83,6 +84,7 @@ const elements = {
   routeDestinationEvent: document.getElementById("routeDestinationEvent"),
   routeModeLabel: document.getElementById("routeModeLabel"),
   routeSubmitButton: document.getElementById("routeSubmitButton"),
+  addEventButton: document.getElementById("addEventButton"),
   timelineBar: document.getElementById("timelineBar"),
   windowLabel: document.getElementById("windowLabel"),
   reviewFeed: document.getElementById("reviewFeed"),
@@ -97,6 +99,21 @@ const elements = {
   dockDiversion: document.getElementById("dockDiversion"),
   dockDiversions: document.getElementById("dockDiversions"),
   toast: document.getElementById("toast"),
+  manualEventOverlay: document.getElementById("manualEventOverlay"),
+  manualEventForm: document.getElementById("manualEventForm"),
+  manualEventCloseButton: document.getElementById("manualEventCloseButton"),
+  manualEventCancelButton: document.getElementById("manualEventCancelButton"),
+  manualEventSubmitButton: document.getElementById("manualEventSubmitButton"),
+  manualEventPickHint: document.getElementById("manualEventPickHint"),
+  manualEventDateLabel: document.getElementById("manualEventDateLabel"),
+  manualEventTime: document.getElementById("manualEventTime"),
+  manualEventTitle: document.getElementById("manualEventTitle"),
+  manualEventAddress: document.getElementById("manualEventAddress"),
+  manualEventLocationHints: document.getElementById("manualEventLocationHints"),
+  manualEventCause: document.getElementById("manualEventCause"),
+  manualEventPriority: document.getElementById("manualEventPriority"),
+  manualEventAttendance: document.getElementById("manualEventAttendance"),
+  manualEventClosure: document.getElementById("manualEventClosure"),
   forceRetrainButton: document.getElementById("forceRetrainButton"),
   correctionArchive: document.getElementById("correctionArchive"),
   correctionOverlay: document.getElementById("correctionOverlay"),
@@ -593,9 +610,115 @@ function createStationIcon() {
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    let message = `Request failed: ${response.status}`;
+    try {
+      const payload = await response.json();
+      if (payload?.detail) {
+        message = String(payload.detail);
+      }
+    } catch (error) {
+      // ignore non-json error bodies
+    }
+    throw new Error(message);
   }
   return response.json();
+}
+
+async function loadEngineCatalog() {
+  try {
+    state.engineCatalog = await fetchJson("/engine/catalog");
+  } catch (error) {
+    state.engineCatalog = {
+      known_event_causes: ["public_event", "procession", "protest", "vip_movement", "others"],
+    };
+  }
+}
+
+function formatCauseLabel(value) {
+  return String(value || "others")
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function populateManualEventCauseOptions() {
+  const causes = state.engineCatalog?.known_event_causes?.length
+    ? state.engineCatalog.known_event_causes
+    : ["public_event", "procession", "protest", "vip_movement", "others"];
+  elements.manualEventCause.innerHTML = causes
+    .map((cause) => `<option value="${cause}">${formatCauseLabel(cause)}</option>`)
+    .join("");
+}
+
+function populateManualEventLocationHints() {
+  const locations = state.engineCatalog?.known_locations || [];
+  elements.manualEventLocationHints.innerHTML = locations
+    .map((location) => `<option value="${location}"></option>`)
+    .join("");
+}
+
+function closeManualEventModal() {
+  elements.manualEventOverlay.hidden = true;
+}
+
+function openManualEventModal() {
+  if (!state.selectedDate) {
+    showToast("Select a dashboard date before adding an event.");
+    return;
+  }
+  clearManualEventForm();
+  populateManualEventCauseOptions();
+  populateManualEventLocationHints();
+  elements.manualEventDateLabel.value = formatDate(state.selectedDate);
+  elements.manualEventTime.value = "18:00";
+  elements.manualEventOverlay.hidden = false;
+}
+
+function clearManualEventForm() {
+  elements.manualEventForm.reset();
+  elements.manualEventDateLabel.value = "";
+  elements.manualEventPickHint.textContent = "Use a Bengaluru road, junction, metro stop, area, or police station name.";
+}
+
+async function submitManualEvent(formEvent) {
+  formEvent.preventDefault();
+  if (!state.selectedDate) {
+    showToast("Select a dashboard date before saving an event.");
+    return;
+  }
+  const formData = new FormData(elements.manualEventForm);
+  const payload = {
+    date: state.selectedDate,
+    time: formData.get("time"),
+    title: formData.get("title"),
+    address: formData.get("address"),
+    event_cause: formData.get("event_cause"),
+    priority: formData.get("priority"),
+    requires_road_closure: elements.manualEventClosure.checked,
+    event_type: "planned",
+    expected_attendance: formData.get("expected_attendance")
+      ? Number(formData.get("expected_attendance"))
+      : null,
+  };
+  elements.manualEventSubmitButton.disabled = true;
+  elements.manualEventSubmitButton.textContent = "Saving...";
+  try {
+    const data = await fetchJson("/dashboard/events/manual", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    closeManualEventModal();
+    clearManualEventForm();
+    await loadDay(state.selectedDate, data.event.event_id);
+    await loadReviewWindow();
+    showToast("Manual event added to the selected date.");
+  } catch (error) {
+    showToast(error.message || "Unable to save the manual event.");
+  } finally {
+    elements.manualEventSubmitButton.disabled = false;
+    elements.manualEventSubmitButton.textContent = "Save Event";
+  }
 }
 
 function clearRecommendationCard() {
@@ -736,7 +859,7 @@ async function loadCalendarWindowsList() {
   state.calendarWindows = data.windows;
 }
 
-async function loadDay(dateKey) {
+async function loadDay(dateKey, preferredEventId = null) {
   const data = await fetchJson(`/dashboard/day/${dateKey}`);
   state.selectedDate = dateKey;
   state.dayData = data;
@@ -752,7 +875,9 @@ async function loadDay(dateKey) {
   state.selectedRouteId = null;
   renderRouteEmptyState("Select a hotspot", "Pick a hotspot from the feed or map to generate a route from the assigned police station.");
   clearRouteVisualization();
-  const defaultEvent = data.events[0] || null;
+  const defaultEvent = preferredEventId
+    ? data.events.find((item) => item.event_id === preferredEventId) || data.events[0] || null
+    : data.events[0] || null;
   if (defaultEvent) {
     setSelectedEvent(defaultEvent.event_id);
   } else {
@@ -809,7 +934,7 @@ function renderEventFeed(events) {
     <button class="event-item ${state.selectedEvent && state.selectedEvent.event_id === event.event_id ? "active" : ""}" data-event-id="${event.event_id}" type="button">
       <div class="event-item-top">
         <div>
-          <strong>${event.title}</strong>
+          <strong>${event.title}</strong>${event.event_source === "manual" ? '<span class="event-source-pill">Manual</span>' : ""}
           <p class="event-meta">${event.address}</p>
         </div>
         ${impactBadge(event.impact_score, event.impact_color)}
@@ -837,6 +962,7 @@ function renderMap(events, policeMarkers) {
     marker.eventId = event.event_id;
     marker.bindPopup(`
       <strong>${event.title}</strong><br />
+      ${event.event_source === "manual" ? '<span class="popup-meta">Operator event</span><br />' : ""}
       <span class="popup-meta">${event.address}</span><br />
       <span class="popup-meta">Impact ${event.impact_score} - ${event.risk_level}</span><br />
       <span class="popup-meta">${event.police_station.station_name}</span>
@@ -1183,6 +1309,22 @@ async function runWeeklyCorrection() {
 
 function setupControls() {
   setupTabs();
+  elements.addEventButton.addEventListener("click", openManualEventModal);
+  elements.manualEventCloseButton.addEventListener("click", () => {
+    closeManualEventModal();
+    clearManualEventForm();
+  });
+  elements.manualEventCancelButton.addEventListener("click", () => {
+    closeManualEventModal();
+    clearManualEventForm();
+  });
+  elements.manualEventForm.addEventListener("submit", submitManualEvent);
+  elements.manualEventOverlay.addEventListener("click", (clickEvent) => {
+    if (clickEvent.target === elements.manualEventOverlay) {
+      closeManualEventModal();
+      clearManualEventForm();
+    }
+  });
   document.getElementById("routeForm").addEventListener("submit", submitRoute);
   document.getElementById("fitCityButton").addEventListener("click", () => {
     map.setView([12.9716, 77.5946], 11);
@@ -1230,9 +1372,12 @@ function setupControls() {
 }
 
 async function bootstrap() {
+  await loadEngineCatalog();
   renderCorrectionArchive();
   setupPanelResize();
   setupControls();
+  populateManualEventCauseOptions();
+  populateManualEventLocationHints();
   try {
     await loadCalendarWindowsList();
     await loadCalendarWindow(0);

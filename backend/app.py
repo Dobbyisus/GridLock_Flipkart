@@ -71,6 +71,18 @@ class FeedbackRequest(BaseModel):
     notes: Optional[str] = None
 
 
+class ManualEventRequest(BaseModel):
+    date: str
+    time: str
+    title: str
+    address: str
+    event_cause: str
+    priority: str
+    requires_road_closure: bool = False
+    event_type: str = "planned"
+    expected_attendance: Optional[int] = Field(default=None, ge=0)
+
+
 @app.get("/")
 def root():
     return {
@@ -121,6 +133,25 @@ def dashboard_calendar_windows():
 @app.get("/dashboard/day/{date_key}")
 def dashboard_day(date_key: str):
     return ENGINE.get_day_dashboard(date_key)
+
+
+@app.post("/dashboard/events/manual")
+def create_manual_event(data: ManualEventRequest):
+    try:
+        event = ENGINE.create_manual_event(
+            date=data.date,
+            time_text=data.time,
+            title=data.title,
+            address=data.address,
+            event_cause=data.event_cause,
+            priority=data.priority,
+            requires_road_closure=data.requires_road_closure,
+            event_type=data.event_type,
+            expected_attendance=data.expected_attendance,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return {"event": event}
 
 
 @app.get("/dashboard/review")

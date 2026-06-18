@@ -591,6 +591,18 @@ label {
   font-weight: 700;
 }
 
+.event-source-pill {
+  display: inline-flex;
+  margin-left: 8px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #edf3ff;
+  color: var(--navy-900);
+  font-size: 0.72rem;
+  font-weight: 800;
+  vertical-align: middle;
+}
+
 .route-metric-badge {
   display: inline-flex;
   align-items: center;
@@ -1026,6 +1038,7 @@ textarea {
   transform: translateY(0);
 }
 
+.manual-event-overlay,
 .correction-overlay {
   position: fixed;
   inset: 0;
@@ -1038,10 +1051,22 @@ textarea {
   backdrop-filter: blur(8px);
 }
 
+.manual-event-overlay {
+  z-index: 1250;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 118px 24px 24px;
+  background: transparent;
+  backdrop-filter: none;
+  pointer-events: none;
+}
+
+.manual-event-overlay[hidden],
 .correction-overlay[hidden] {
   display: none !important;
 }
 
+.manual-event-modal,
 .correction-panel {
   width: min(440px, calc(100vw - 36px));
   max-height: min(78vh, 680px);
@@ -1053,6 +1078,12 @@ textarea {
   box-shadow: 0 24px 60px rgba(10, 42, 115, 0.18);
 }
 
+.manual-event-modal {
+  width: min(560px, calc(100vw - 32px));
+  pointer-events: auto;
+}
+
+.manual-event-head,
 .correction-panel-head,
 .correction-panel-actions,
 .correction-summary-topline {
@@ -1062,10 +1093,12 @@ textarea {
   gap: 12px;
 }
 
+.manual-event-head,
 .correction-panel-head {
   align-items: flex-start;
 }
 
+.manual-event-close,
 .correction-panel-close {
   width: 34px;
   height: 34px;
@@ -1077,6 +1110,60 @@ textarea {
   font-weight: 800;
   cursor: pointer;
   flex-shrink: 0;
+}
+
+.manual-event-subtext {
+  margin: 8px 0 0;
+  color: var(--text-soft);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.manual-event-form {
+  margin-top: 16px;
+}
+
+.manual-event-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.manual-event-span-2 {
+  grid-column: span 2;
+}
+
+.manual-event-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 30px;
+}
+
+.manual-event-checkbox input {
+  width: 16px;
+  height: 16px;
+}
+
+.manual-event-toolbar,
+.manual-event-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.manual-event-toolbar {
+  margin-top: 14px;
+}
+
+.manual-event-toolbar span {
+  color: var(--text-soft);
+  font-size: 0.82rem;
+}
+
+.manual-event-actions {
+  margin-top: 18px;
 }
 
 .correction-panel-close:disabled,
