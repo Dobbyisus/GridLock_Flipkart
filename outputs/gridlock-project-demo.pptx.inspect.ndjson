@@ -1,0 +1,228 @@
+{"kind":"deck","id":"pr/6wshk7","name":"Deck"}
+{"kind":"layout","layoutId":"0b22edb9-1d79-4e4a-b72a-18a736a756cf","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"14f83547-aa12-4f19-82fe-ae3fb9dead06","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/pkjxws","slide":1,"title":"CITY OPS INTELLIGENCE","textShapes":10}
+{"kind":"shape","id":"sh/xc3ylc7u","slide":1,"bbox":[860,48,320,320]}
+{"kind":"shape","id":"sh/mlkjm1cf","slide":1,"bbox":[680,350,440,260]}
+{"kind":"textbox","id":"sh/f6dcbulw","slide":1,"text":"CITY OPS INTELLIGENCE","textPreview":"CITY OPS INTELLIGENCE","textChars":21,"textLines":1,"bbox":[74,76,190,30]}
+{"kind":"textbox","id":"sh/4zidonyd","slide":1,"text":"GridLock","textPreview":"GridLock","textChars":8,"textLines":1,"bbox":[74,142,700,160]}
+{"kind":"textbox","id":"sh/xkf6dcbu","slide":1,"text":"Adaptive traffic intelligence for city command centers","textPreview":"Adaptive traffic intelligence for city command centers","textChars":54,"textLines":1,"bbox":[76,242,680,110]}
+{"kind":"textbox","id":"sh/mtwra5gb","slide":1,"text":"One live command surface for hotspot monitoring, field deployment, route decisions, and weekly learning.","textPreview":"One live command surface for hotspot monitoring, field deployment, route decisions, and weekly learning.","textChars":104,"textLines":1,"bbox":[76,330,620,96]}
+{"kind":"shape","id":"sh/fepkzupw","slide":1,"bbox":[768,108,396,486]}
+{"kind":"textbox","id":"sh/83itgfml","slide":1,"text":"LIVE DASHBOARD","textPreview":"LIVE DASHBOARD","textChars":14,"textLines":1,"bbox":[792,132,160,20]}
+{"kind":"textbox","id":"sh/xobm58z2","slide":1,"text":"Command UI preview","textPreview":"Command UI preview","textChars":18,"textLines":1,"bbox":[792,162,260,28]}
+{"kind":"shape","id":"sh/dcbulwva","slide":1,"bbox":[792,136,122,402]}
+{"kind":"shape","id":"sh/kre1w7mp","slide":1,"bbox":[928,136,210,260]}
+{"kind":"shape","id":"sh/val87ed8","slide":1,"bbox":[928,408,210,130]}
+{"kind":"shape","id":"sh/6psfil0r","slide":1,"bbox":[807,170,92,82]}
+{"kind":"shape","id":"sh/donyd0z6","slide":1,"bbox":[807,276,92,82]}
+{"kind":"shape","id":"sh/k3q5o7qp","slide":1,"bbox":[807,382,92,82]}
+{"kind":"shape","id":"sh/vixczed8","slide":1,"bbox":[972,194,18,18]}
+{"kind":"shape","id":"sh/2x4nap4r","slide":1,"bbox":[1052,194,18,18]}
+{"kind":"shape","id":"sh/d0z61032","slide":1,"bbox":[972,268,18,18]}
+{"kind":"shape","id":"sh/kf6dcbul","slide":1,"bbox":[1052,268,18,18]}
+{"kind":"textbox","id":"sh/0bi9s36h","slide":1,"text":"Priority Hotspot","textPreview":"Priority Hotspot","textChars":16,"textLines":1,"bbox":[946,426,160,20]}
+{"kind":"textbox","id":"sh/pwb2hwfy","slide":1,"text":"Impact 82 • Critical","textPreview":"Impact 82 • Critical","textChars":20,"textLines":1,"bbox":[946,450,170,48]}
+{"kind":"textbox","id":"sh/i5sneloj","slide":1,"text":"22 officers • 30 barricades","textPreview":"22 officers • 30 barricades","textChars":27,"textLines":1,"bbox":[946,492,160,28]}
+{"kind":"textbox","id":"sh/7qpg3ex0","slide":1,"text":"GridLock • Project Demo Deck","textPreview":"GridLock • Project Demo Deck","textChars":28,"textLines":1,"bbox":[72,684,320,18]}
+{"kind":"notes","id":"nt/pkjxws","slide":1,"text":""}
+{"kind":"slide","id":"sl/e1e5u3","slide":2,"title":"THE PROBLEM","textShapes":10}
+{"kind":"textbox","id":"sh/at47y1kr","slide":2,"text":"THE PROBLEM","textPreview":"THE PROBLEM","textChars":11,"textLines":1,"bbox":[72,54,320,22]}
+{"kind":"textbox","id":"sh/lkjm1cfa","slide":2,"text":"Traffic ops are still reactive","textPreview":"Traffic ops are still reactive","textChars":30,"textLines":1,"bbox":[72,84,720,60]}
+{"kind":"textbox","id":"sh/szqtcj6t","slide":2,"text":"Cities need one place to monitor incidents, coordinate response, and learn from every disruption.","textPreview":"Cities need one place to monitor incidents, coordinate response, and learn from every disruption.","textChars":97,"textLines":1,"bbox":[72,134,860,42]}
+{"kind":"shape","id":"sh/32lszqtc","slide":2,"bbox":[72,228,352,288]}
+{"kind":"textbox","id":"sh/ahoza1gv","slide":2,"text":"Fragmented tooling","textPreview":"Fragmented tooling","textChars":18,"textLines":1,"bbox":[96,258,280,34]}
+{"kind":"textbox","id":"sh/l87ed8ba","slide":2,"text":"Event feeds, maps, and field decisions are split across disconnected systems.","textPreview":"Event feeds, maps, and field decisions are split across disconnected systems.","textChars":77,"textLines":1,"bbox":[96,312,288,120]}
+{"kind":"shape","id":"sh/sneloj2t","slide":2,"bbox":[96,448,44,44]}
+{"kind":"shape","id":"sh/3q5o7qpg","slide":2,"bbox":[456,228,352,288]}
+{"kind":"textbox","id":"sh/e9cvixcz","slide":2,"text":"Slow response loops","textPreview":"Slow response loops","textChars":19,"textLines":1,"bbox":[480,258,280,34]}
+{"kind":"textbox","id":"sh/87ed8bat","slide":2,"text":"Operators lose time deciding severity, deployment levels, and diversion strategy.","textPreview":"Operators lose time deciding severity, deployment levels, and diversion strategy.","textChars":81,"textLines":1,"bbox":[480,312,288,120]}
+{"kind":"shape","id":"sh/xs72x4na","slide":2,"bbox":[480,448,44,44]}
+{"kind":"shape","id":"sh/q1orytsv","slide":2,"bbox":[840,228,352,288]}
+{"kind":"textbox","id":"sh/fmlkjm1c","slide":2,"text":"No learning memory","textPreview":"No learning memory","textChars":18,"textLines":1,"bbox":[864,258,280,34]}
+{"kind":"textbox","id":"sh/8z25kb6x","slide":2,"text":"What actually happened in the field rarely improves the next recommendation cycle.","textPreview":"What actually happened in the field rarely improves the next recommendation cycle.","textChars":82,"textLines":1,"bbox":[864,312,288,120]}
+{"kind":"shape","id":"sh/1gvy90je","slide":2,"bbox":[864,448,44,44]}
+{"kind":"textbox","id":"sh/qtcj6tov","slide":2,"text":"GridLock Project Demo","textPreview":"GridLock Project Demo","textChars":21,"textLines":1,"bbox":[72,684,320,18]}
+{"kind":"notes","id":"nt/e1e5u3","slide":2,"text":""}
+{"kind":"slide","id":"sl/zm21h1","slide":3,"title":"PRODUCT OVERVIEW","textShapes":14}
+{"kind":"textbox","id":"sh/vy90je9c","slide":3,"text":"PRODUCT OVERVIEW","textPreview":"PRODUCT OVERVIEW","textChars":16,"textLines":1,"bbox":[72,54,320,22]}
+{"kind":"textbox","id":"sh/oj2t83it","slide":3,"text":"One operating surface","textPreview":"One operating surface","textChars":21,"textLines":1,"bbox":[72,84,720,60]}
+{"kind":"textbox","id":"sh/d4vmtwra","slide":3,"text":"GridLock combines live monitoring, response recommendations, route decisions, and a learning loop.","textPreview":"GridLock combines live monitoring, response recommendations, route decisions, and a learning loop.","textChars":98,"textLines":1,"bbox":[72,134,860,42]}
+{"kind":"shape","id":"sh/61032lsz","slide":3,"bbox":[500,256,280,170]}
+{"kind":"textbox","id":"sh/vmtwra5g","slide":3,"text":"GridLock Core","textPreview":"GridLock Core","textChars":13,"textLines":1,"bbox":[538,300,210,42]}
+{"kind":"textbox","id":"sh/o7qpg3ex","slide":3,"text":"Command UI + Engine + Weekly Learning","textPreview":"Command UI + Engine + Weekly Learning","textChars":37,"textLines":1,"bbox":[540,346,200,54]}
+{"kind":"shape","id":"sh/dsji5sne","slide":3,"bbox":[90,176,286,136]}
+{"kind":"textbox","id":"sh/6tovahoz","slide":3,"text":"Monitor","textPreview":"Monitor","textChars":7,"textLines":1,"bbox":[112,198,200,28]}
+{"kind":"textbox","id":"sh/vahoza1g","slide":3,"text":"Hotspot feed, calendar windows, live severity.","textPreview":"Hotspot feed, calendar windows, live severity.","textChars":46,"textLines":1,"bbox":[112,238,236,58]}
+{"kind":"shape","id":"sh/7qpg3ex0","slide":3,"bbox":[908,176,286,136]}
+{"kind":"textbox","id":"sh/i5sneloj","slide":3,"text":"Respond","textPreview":"Respond","textChars":7,"textLines":1,"bbox":[930,198,200,28]}
+{"kind":"textbox","id":"sh/pwb2hwfy","slide":3,"text":"Officers, barricades, station alignment, diversions.","textPreview":"Officers, barricades, station alignment, diversions.","textChars":52,"textLines":1,"bbox":[930,238,236,58]}
+{"kind":"shape","id":"sh/0bi9s36h","slide":3,"bbox":[90,438,286,136]}
+{"kind":"textbox","id":"sh/7y1kre1w","slide":3,"text":"Route","textPreview":"Route","textChars":5,"textLines":1,"bbox":[112,460,200,28]}
+{"kind":"textbox","id":"sh/ed8v6psf","slide":3,"text":"Alternative paths around impacted corridors.","textPreview":"Alternative paths around impacted corridors.","textChars":44,"textLines":1,"bbox":[112,500,236,58]}
+{"kind":"shape","id":"sh/p4r65wju","slide":3,"bbox":[908,438,286,136]}
+{"kind":"textbox","id":"sh/wjudg7ad","slide":3,"text":"Learn","textPreview":"Learn","textChars":5,"textLines":1,"bbox":[930,460,200,28]}
+{"kind":"textbox","id":"sh/72x4nap4","slide":3,"text":"Weekly review, correction summary, retraining.","textPreview":"Weekly review, correction summary, retraining.","textChars":46,"textLines":1,"bbox":[930,500,236,58]}
+{"kind":"shape","id":"sh/ih4byhgn","slide":3,"bbox":[60,42,756,299]}
+{"kind":"shape","id":"sh/mtwra5gb","slide":3,"bbox":[48,42,1158,299]}
+{"kind":"shape","id":"sh/fepkzupw","slide":3,"bbox":[476,341,328,97]}
+{"kind":"shape","id":"sh/4zidonyd","slide":3,"bbox":[514,288,290,53]}
+{"kind":"textbox","id":"sh/xkf6dcbu","slide":3,"text":"GridLock Project Demo","textPreview":"GridLock Project Demo","textChars":21,"textLines":1,"bbox":[72,684,320,18]}
+{"kind":"notes","id":"nt/zm21h1","slide":3,"text":""}
+{"kind":"slide","id":"sl/jt8nxs","slide":4,"title":"FRONTEND EXPERIENCE","textShapes":11}
+{"kind":"textbox","id":"sh/loj2t83i","slide":4,"text":"FRONTEND EXPERIENCE","textPreview":"FRONTEND EXPERIENCE","textChars":19,"textLines":1,"bbox":[72,54,320,22]}
+{"kind":"textbox","id":"sh/ex0nuxc3","slide":4,"text":"A synchronized command interface","textPreview":"A synchronized command interface","textChars":32,"textLines":1,"bbox":[72,84,720,60]}
+{"kind":"textbox","id":"sh/3itgfmlk","slide":4,"text":"The feed, map, detail dock, route planner, and weekly review are designed to update together.","textPreview":"The feed, map, detail dock, route planner, and weekly review are designed to update together.","textChars":93,"textLines":1,"bbox":[72,134,860,42]}
+{"kind":"shape","id":"sh/wb2hwfyx","slide":4,"bbox":[86,172,1100,454]}
+{"kind":"shape","id":"sh/lwval87e","slide":4,"bbox":[110,196,280,408]}
+{"kind":"shape","id":"sh/e9cvixcz","slide":4,"bbox":[410,196,540,408]}
+{"kind":"shape","id":"sh/3q5o7qpg","slide":4,"bbox":[968,246,194,190]}
+{"kind":"shape","id":"sh/sneloj2t","slide":4,"bbox":[968,452,194,152]}
+{"kind":"shape","id":"sh/l87ed8ba","slide":4,"bbox":[128,278,244,60]}
+{"kind":"shape","id":"sh/5kb6xkf6","slide":4,"bbox":[128,354,244,60]}
+{"kind":"shape","id":"sh/czed8v6p","slide":4,"bbox":[128,430,244,60]}
+{"kind":"shape","id":"sh/neloj2t8","slide":4,"bbox":[128,506,244,60]}
+{"kind":"shape","id":"sh/ytsvu9kn","slide":4,"bbox":[474,276,20,20]}
+{"kind":"shape","id":"sh/5sneloj2","slide":4,"bbox":[606,276,20,20]}
+{"kind":"shape","id":"sh/cbulwval","slide":4,"bbox":[474,364,20,20]}
+{"kind":"shape","id":"sh/nqxs72x4","slide":4,"bbox":[606,364,20,20]}
+{"kind":"textbox","id":"sh/u54zidon","slide":4,"text":"Operations Rail","textPreview":"Operations Rail","textChars":15,"textLines":1,"bbox":[130,214,160,22]}
+{"kind":"textbox","id":"sh/5wjudg7a","slide":4,"text":"Interactive Map","textPreview":"Interactive Map","textChars":15,"textLines":1,"bbox":[430,214,160,22]}
+{"kind":"textbox","id":"sh/gbq1oryt","slide":4,"text":"Detail Dock","textPreview":"Detail Dock","textChars":11,"textLines":1,"bbox":[982,264,130,22]}
+{"kind":"textbox","id":"sh/cj6tovah","slide":4,"text":"Route Planner","textPreview":"Route Planner","textChars":13,"textLines":1,"bbox":[982,470,130,22]}
+{"kind":"textbox","id":"sh/54zidony","slide":4,"text":"Hotspot feed + week review entry","textPreview":"Hotspot feed + week review entry","textChars":32,"textLines":1,"bbox":[126,564,270,38]}
+{"kind":"textbox","id":"sh/udg7adsj","slide":4,"text":"Severity-coded map + police markers","textPreview":"Severity-coded map + police markers","textChars":35,"textLines":1,"bbox":[440,564,270,38]}
+{"kind":"textbox","id":"sh/nyd0z610","slide":4,"text":"Field plan + route decisions","textPreview":"Field plan + route decisions","textChars":28,"textLines":1,"bbox":[974,564,270,38]}
+{"kind":"textbox","id":"sh/cvixczed","slide":4,"text":"GridLock Project Demo","textPreview":"GridLock Project Demo","textChars":21,"textLines":1,"bbox":[72,684,320,18]}
+{"kind":"notes","id":"nt/jt8nxs","slide":4,"text":""}
+{"kind":"slide","id":"sl/7gb7xm","slide":5,"title":"BACKEND + API LAYER","textShapes":22}
+{"kind":"textbox","id":"sh/8nqxs72x","slide":5,"text":"BACKEND + API LAYER","textPreview":"BACKEND + API LAYER","textChars":19,"textLines":1,"bbox":[72,54,320,22]}
+{"kind":"textbox","id":"sh/j2t83itg","slide":5,"text":"FastAPI as the command fabric","textPreview":"FastAPI as the command fabric","textChars":29,"textLines":1,"bbox":[72,84,720,60]}
+{"kind":"textbox","id":"sh/qh0fepkz","slide":5,"text":"The UI is served directly by FastAPI and backed by dedicated endpoints for scoring, routing, review, and weekly learning.","textPreview":"The UI is served directly by FastAPI and backed by dedicated endpoints for scoring, routing, review, and weekly learning.","textChars":121,"textLines":1,"bbox":[72,134,860,42]}
+{"kind":"shape","id":"sh/1w7mp0bi","slide":5,"bbox":[84,194,280,380]}
+{"kind":"shape","id":"sh/8bat47y1","slide":5,"bbox":[430,194,366,380]}
+{"kind":"shape","id":"sh/jqh0fepk","slide":5,"bbox":[862,194,320,380]}
+{"kind":"textbox","id":"sh/q5o7qpg3","slide":5,"text":"Frontend Surface","textPreview":"Frontend Surface","textChars":16,"textLines":1,"bbox":[108,220,180,26]}
+{"kind":"textbox","id":"sh/1kre1w7m","slide":5,"text":"• Dashboard shell","textPreview":"• Dashboard shell","textChars":17,"textLines":1,"bbox":[108,270,220,28]}
+{"kind":"textbox","id":"sh/c3ylc7u5","slide":5,"text":"• Operations tab","textPreview":"• Operations tab","textChars":16,"textLines":1,"bbox":[108,308,220,28]}
+{"kind":"textbox","id":"sh/a1gvy90j","slide":5,"text":"• Weekly review tab","textPreview":"• Weekly review tab","textChars":19,"textLines":1,"bbox":[108,346,220,28]}
+{"kind":"textbox","id":"sh/zidonyd0","slide":5,"text":"• Route planner","textPreview":"• Route planner","textChars":15,"textLines":1,"bbox":[108,384,220,28]}
+{"kind":"textbox","id":"sh/s36hcrmh","slide":5,"text":"• Correction archive","textPreview":"• Correction archive","textChars":20,"textLines":1,"bbox":[108,422,220,28]}
+{"kind":"textbox","id":"sh/hoza1gvy","slide":5,"text":"FastAPI Endpoints","textPreview":"FastAPI Endpoints","textChars":17,"textLines":1,"bbox":[454,220,220,26]}
+{"kind":"textbox","id":"sh/ap4r65wj","slide":5,"text":"• /dashboard","textPreview":"• /dashboard","textChars":12,"textLines":1,"bbox":[454,270,286,28]}
+{"kind":"textbox","id":"sh/za1gvy90","slide":5,"text":"• /dashboard/day/{date}","textPreview":"• /dashboard/day/{date}","textChars":23,"textLines":1,"bbox":[454,308,286,28]}
+{"kind":"textbox","id":"sh/svu9knih","slide":5,"text":"• /routes/recommend","textPreview":"• /routes/recommend","textChars":19,"textLines":1,"bbox":[454,346,286,28]}
+{"kind":"textbox","id":"sh/hgn29gr2","slide":5,"text":"• /feedback/log","textPreview":"• /feedback/log","textChars":15,"textLines":1,"bbox":[454,384,286,28]}
+{"kind":"textbox","id":"sh/adsji5sn","slide":5,"text":"• /learning/state + /learning/retrain","textPreview":"• /learning/state + /learning/retrain","textChars":37,"textLines":1,"bbox":[454,422,286,28]}
+{"kind":"textbox","id":"sh/3ylc7u54","slide":5,"text":"Engine + State","textPreview":"Engine + State","textChars":14,"textLines":1,"bbox":[886,220,220,26]}
+{"kind":"textbox","id":"sh/vu9knih4","slide":5,"text":"• Impact scoring","textPreview":"• Impact scoring","textChars":16,"textLines":1,"bbox":[886,270,240,28]}
+{"kind":"textbox","id":"sh/29gr2p8n","slide":5,"text":"• Resource recommendation","textPreview":"• Resource recommendation","textChars":25,"textLines":1,"bbox":[886,308,240,28]}
+{"kind":"textbox","id":"sh/d0z61032","slide":5,"text":"• Diversion logic","textPreview":"• Diversion logic","textChars":17,"textLines":1,"bbox":[886,346,240,28]}
+{"kind":"textbox","id":"sh/kf6dcbul","slide":5,"text":"• Weekly retraining state","textPreview":"• Weekly retraining state","textChars":25,"textLines":1,"bbox":[886,384,240,28]}
+{"kind":"textbox","id":"sh/v6psfil0","slide":5,"text":"• Feedback log persistence","textPreview":"• Feedback log persistence","textChars":26,"textLines":1,"bbox":[886,422,240,28]}
+{"kind":"shape","id":"sh/2lszqtcj","slide":5,"bbox":[364,384,66,0]}
+{"kind":"shape","id":"sh/d8bat47y","slide":5,"bbox":[796,384,66,0]}
+{"kind":"textbox","id":"sh/knih4byh","slide":5,"text":"GridLock Project Demo","textPreview":"GridLock Project Demo","textChars":21,"textLines":1,"bbox":[72,684,320,18]}
+{"kind":"notes","id":"nt/7gb7xm","slide":5,"text":""}
+{"kind":"slide","id":"sl/62ycyv","slide":6,"title":"INTELLIGENCE ENGINE","textShapes":12}
+{"kind":"textbox","id":"sh/byhgn29g","slide":6,"text":"INTELLIGENCE ENGINE","textPreview":"INTELLIGENCE ENGINE","textChars":19,"textLines":1,"bbox":[72,54,320,22]}
+{"kind":"textbox","id":"sh/0je9cvix","slide":6,"text":"From raw event signals to operational decisions","textPreview":"From raw event signals to operational decisions","textChars":47,"textLines":1,"bbox":[72,84,720,60]}
+{"kind":"textbox","id":"sh/t47y1kre","slide":6,"text":"GridLock converts event attributes and spatial context into clear field recommendations.","textPreview":"GridLock converts event attributes and spatial context into clear field recommendations.","textChars":88,"textLines":1,"bbox":[72,134,860,42]}
+{"kind":"shape","id":"sh/il0rqd4v","slide":6,"bbox":[92,194,1090,390]}
+{"kind":"shape","id":"sh/b6xkf6dc","slide":6,"bbox":[126,250,210,212]}
+{"kind":"textbox","id":"sh/0rqd4vmt","slide":6,"text":"Inputs","textPreview":"Inputs","textChars":6,"textLines":1,"bbox":[144,272,140,24]}
+{"kind":"textbox","id":"sh/tcj6tova","slide":6,"text":"Event cause, priority, road closure, location, time, attendance","textPreview":"Event cause, priority, road closure, location, time, attendance","textChars":63,"textLines":1,"bbox":[144,322,164,104]}
+{"kind":"shape","id":"sh/ixczed8v","slide":6,"bbox":[384,250,210,212]}
+{"kind":"textbox","id":"sh/bi9s36hc","slide":6,"text":"Scoring","textPreview":"Scoring","textChars":7,"textLines":1,"bbox":[402,272,140,24]}
+{"kind":"textbox","id":"sh/rytsvu9k","slide":6,"text":"Impact score, risk level, hotspot context, corridor context","textPreview":"Impact score, risk level, hotspot context, corridor context","textChars":59,"textLines":1,"bbox":[402,322,164,104]}
+{"kind":"shape","id":"sh/yd0z6103","slide":6,"bbox":[642,250,210,212]}
+{"kind":"textbox","id":"sh/90je9cvi","slide":6,"text":"Recommendations","textPreview":"Recommendations","textChars":15,"textLines":1,"bbox":[660,272,140,24]}
+{"kind":"textbox","id":"sh/gfmlkjm1","slide":6,"text":"Officers, barricades, diversions, route alternatives, alert level","textPreview":"Officers, barricades, diversions, route alternatives, alert level","textChars":65,"textLines":1,"bbox":[660,322,164,104]}
+{"kind":"shape","id":"sh/rmhk3q5o","slide":6,"bbox":[900,250,210,212]}
+{"kind":"textbox","id":"sh/y1kre1w7","slide":6,"text":"Learning","textPreview":"Learning","textChars":8,"textLines":1,"bbox":[918,272,140,24]}
+{"kind":"textbox","id":"sh/9s36hcrm","slide":6,"text":"Feedback log, weekly correction, state update, archived summary","textPreview":"Feedback log, weekly correction, state update, archived summary","textChars":63,"textLines":1,"bbox":[918,322,164,104]}
+{"kind":"shape","id":"sh/g7adsji5","slide":6,"bbox":[347,334,46,28]}
+{"kind":"shape","id":"sh/nih4byhg","slide":6,"bbox":[605,334,46,28]}
+{"kind":"shape","id":"sh/yxobm58z","slide":6,"bbox":[863,334,46,28]}
+{"kind":"textbox","id":"sh/vmtwra5g","slide":6,"text":"GridLock Project Demo","textPreview":"GridLock Project Demo","textChars":21,"textLines":1,"bbox":[72,684,320,18]}
+{"kind":"chart","id":"ch/ylc7u54z","slide":6,"name":"","chartType":"bar","bbox":[864,486,260,74]}
+{"kind":"notes","id":"nt/62ycyv","slide":6,"text":""}
+{"kind":"slide","id":"sl/ynqr06","slide":7,"title":"WEEKLY CORRECTION LOOP","textShapes":14}
+{"kind":"textbox","id":"sh/gfmlkjm1","slide":7,"text":"WEEKLY CORRECTION LOOP","textPreview":"WEEKLY CORRECTION LOOP","textChars":22,"textLines":1,"bbox":[72,54,320,22]}
+{"kind":"textbox","id":"sh/rytsvu9k","slide":7,"text":"The product gets sharper every week","textPreview":"The product gets sharper every week","textChars":35,"textLines":1,"bbox":[72,84,720,60]}
+{"kind":"textbox","id":"sh/yd0z6103","slide":7,"text":"Operators log what actually happened in the field, then GridLock recalibrates the engine and preserves the weekly summary.","textPreview":"Operators log what actually happened in the field, then GridLock recalibrates the engine and preserves the weekly summary.","textChars":122,"textLines":1,"bbox":[72,134,860,42]}
+{"kind":"shape","id":"sh/9s36hcrm","slide":7,"bbox":[520,274,238,126]}
+{"kind":"textbox","id":"sh/g7adsji5","slide":7,"text":"Weekly Learning","textPreview":"Weekly Learning","textChars":15,"textLines":1,"bbox":[556,308,170,30]}
+{"kind":"textbox","id":"sh/rmhk3q5o","slide":7,"text":"From feedback log to improved recommendations","textPreview":"From feedback log to improved recommendations","textChars":45,"textLines":1,"bbox":[550,342,180,40]}
+{"kind":"shape","id":"sh/y1kre1w7","slide":7,"bbox":[530,180,210,104]}
+{"kind":"textbox","id":"sh/5o7qpg3e","slide":7,"text":"Review","textPreview":"Review","textChars":6,"textLines":1,"bbox":[548,198,120,24]}
+{"kind":"textbox","id":"sh/g3ex0nux","slide":7,"text":"Operators log actual impact and severity.","textPreview":"Operators log actual impact and severity.","textChars":41,"textLines":1,"bbox":[548,230,160,38]}
+{"kind":"shape","id":"sh/m94fu18j","slide":7,"bbox":[760,320,210,104]}
+{"kind":"textbox","id":"sh/fu18jqh0","slide":7,"text":"Retrain","textPreview":"Retrain","textChars":7,"textLines":1,"bbox":[778,338,120,24]}
+{"kind":"textbox","id":"sh/4fu18jqh","slide":7,"text":"Weekly correction updates learning state.","textPreview":"Weekly correction updates learning state.","textChars":41,"textLines":1,"bbox":[778,370,160,38]}
+{"kind":"shape","id":"sh/x0nuxc3y","slide":7,"bbox":[600,502,210,104]}
+{"kind":"textbox","id":"sh/qxs72x4n","slide":7,"text":"Archive","textPreview":"Archive","textChars":7,"textLines":1,"bbox":[618,520,120,24]}
+{"kind":"textbox","id":"sh/fil0rqd4","slide":7,"text":"Per-week summaries remain accessible.","textPreview":"Per-week summaries remain accessible.","textChars":37,"textLines":1,"bbox":[618,552,160,38]}
+{"kind":"shape","id":"sh/83itgfml","slide":7,"bbox":[360,340,210,104]}
+{"kind":"textbox","id":"sh/xobm58z2","slide":7,"text":"Compare","textPreview":"Compare","textChars":7,"textLines":1,"bbox":[378,358,120,24]}
+{"kind":"textbox","id":"sh/mtwra5gb","slide":7,"text":"Predicted vs actual outcomes are measured.","textPreview":"Predicted vs actual outcomes are measured.","textChars":42,"textLines":1,"bbox":[378,390,160,38]}
+{"kind":"shape","id":"sh/fepkzupw","slide":7,"bbox":[520,232,10,105]}
+{"kind":"shape","id":"sh/72x4nap4","slide":7,"bbox":[758,337,2,35]}
+{"kind":"shape","id":"sh/ih4byhgn","slide":7,"bbox":[639,400,66,102]}
+{"kind":"shape","id":"sh/p8nqxs72","slide":7,"bbox":[465,316,55,24]}
+{"kind":"textbox","id":"sh/0nuxc3yl","slide":7,"text":"GridLock Project Demo","textPreview":"GridLock Project Demo","textChars":21,"textLines":1,"bbox":[72,684,320,18]}
+{"kind":"notes","id":"nt/ynqr06","slide":7,"text":""}
+{"kind":"slide","id":"sl/li3b51","slide":8,"title":"LIVE DEMO FLOW","textShapes":17}
+{"kind":"textbox","id":"sh/mhk3q5o7","slide":8,"text":"LIVE DEMO FLOW","textPreview":"LIVE DEMO FLOW","textChars":14,"textLines":1,"bbox":[72,54,320,22]}
+{"kind":"textbox","id":"sh/t83itgfm","slide":8,"text":"The 90-second story","textPreview":"The 90-second story","textChars":19,"textLines":1,"bbox":[72,84,720,60]}
+{"kind":"textbox","id":"sh/4nap4r65","slide":8,"text":"This is the fast-paced sequence that shows the product value without slowing the audience down.","textPreview":"This is the fast-paced sequence that shows the product value without slowing the audience down.","textChars":95,"textLines":1,"bbox":[72,134,860,42]}
+{"kind":"shape","id":"sh/bq1oryts","slide":8,"bbox":[154,262,48,48]}
+{"kind":"textbox","id":"sh/m58z25kb","slide":8,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[169,274,18,18]}
+{"kind":"textbox","id":"sh/twra5gbq","slide":8,"text":"Open dashboard and establish city command view","textPreview":"Open dashboard and establish city command view","textChars":46,"textLines":1,"bbox":[104,330,150,104]}
+{"kind":"shape","id":"sh/4byhgn29","slide":8,"bbox":[226,278,36,16]}
+{"kind":"shape","id":"sh/bm58z25k","slide":8,"bbox":[331,262,48,48]}
+{"kind":"textbox","id":"sh/m1cfa9w3","slide":8,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[346,274,18,18]}
+{"kind":"textbox","id":"sh/cfa9w3m9","slide":8,"text":"Click a hotspot to sync feed, map, and detail dock","textPreview":"Click a hotspot to sync feed, map, and detail dock","textChars":50,"textLines":1,"bbox":[281,330,150,104]}
+{"kind":"shape","id":"sh/1032lszq","slide":8,"bbox":[403,278,36,16]}
+{"kind":"shape","id":"sh/u9knih4b","slide":8,"bbox":[508,262,48,48]}
+{"kind":"textbox","id":"sh/judg7ads","slide":8,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[523,274,18,18]}
+{"kind":"textbox","id":"sh/c7u54zid","slide":8,"text":"Show route recommendation around impact zone","textPreview":"Show route recommendation around impact zone","textChars":44,"textLines":1,"bbox":[458,330,150,104]}
+{"kind":"shape","id":"sh/1orytsvu","slide":8,"bbox":[580,278,36,16]}
+{"kind":"shape","id":"sh/u18jqh0f","slide":8,"bbox":[685,262,48,48]}
+{"kind":"textbox","id":"sh/jm1cfa9w","slide":8,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[700,274,18,18]}
+{"kind":"textbox","id":"sh/cvixczed","slide":8,"text":"Jump to calendar/week selector for operational context","textPreview":"Jump to calendar/week selector for operational context","textChars":54,"textLines":1,"bbox":[635,330,150,104]}
+{"kind":"shape","id":"sh/5gbq1ory","slide":8,"bbox":[757,278,36,16]}
+{"kind":"shape","id":"sh/90je9cvi","slide":8,"bbox":[862,262,48,48]}
+{"kind":"textbox","id":"sh/gfmlkjm1","slide":8,"text":"5","textPreview":"5","textChars":1,"textLines":1,"bbox":[877,274,18,18]}
+{"kind":"textbox","id":"sh/rytsvu9k","slide":8,"text":"Open Weekly Review and show feedback capture","textPreview":"Open Weekly Review and show feedback capture","textChars":44,"textLines":1,"bbox":[812,330,150,104]}
+{"kind":"shape","id":"sh/yd0z6103","slide":8,"bbox":[934,278,36,16]}
+{"kind":"shape","id":"sh/9s36hcrm","slide":8,"bbox":[1039,262,48,48]}
+{"kind":"textbox","id":"sh/g7adsji5","slide":8,"text":"6","textPreview":"6","textChars":1,"textLines":1,"bbox":[1054,274,18,18]}
+{"kind":"textbox","id":"sh/rmhk3q5o","slide":8,"text":"Run Weekly Correction and reveal stored summary","textPreview":"Run Weekly Correction and reveal stored summary","textChars":47,"textLines":1,"bbox":[989,330,150,104]}
+{"kind":"shape","id":"sh/y1kre1w7","slide":8,"bbox":[314,486,652,92]}
+{"kind":"textbox","id":"sh/5o7qpg3e","slide":8,"text":"Goal: make every click trigger a visible update and end on the correction archive as the product memory moment.","textPreview":"Goal: make every click trigger a visible update and end on the correction archive as the product memory moment.","textChars":111,"textLines":1,"bbox":[340,512,600,36]}
+{"kind":"textbox","id":"sh/g3ex0nux","slide":8,"text":"GridLock Project Demo","textPreview":"GridLock Project Demo","textChars":21,"textLines":1,"bbox":[72,684,320,18]}
+{"kind":"notes","id":"nt/li3b51","slide":8,"text":""}
+{"kind":"slide","id":"sl/2th8ua","slide":9,"title":"WHY IT WINS","textShapes":9}
+{"kind":"textbox","id":"sh/qtcj6tov","slide":9,"text":"WHY IT WINS","textPreview":"WHY IT WINS","textChars":11,"textLines":1,"bbox":[72,72,240,20]}
+{"kind":"textbox","id":"sh/1gvy90je","slide":9,"text":"From reactive traffic management to adaptive city operations","textPreview":"From reactive traffic management to adaptive city operations","textChars":60,"textLines":1,"bbox":[72,110,760,60]}
+{"kind":"shape","id":"sh/8z25kb6x","slide":9,"bbox":[86,246,330,270]}
+{"kind":"textbox","id":"sh/fmlkjm1c","slide":9,"text":"Operational clarity","textPreview":"Operational clarity","textChars":19,"textLines":1,"bbox":[110,274,250,58]}
+{"kind":"textbox","id":"sh/q1orytsv","slide":9,"text":"One surface for hotspots, maps, response plans, and route decisions.","textPreview":"One surface for hotspots, maps, response plans, and route decisions.","textChars":68,"textLines":1,"bbox":[110,362,260,108]}
+{"kind":"shape","id":"sh/xs72x4na","slide":9,"bbox":[460,246,330,270]}
+{"kind":"textbox","id":"sh/87ed8bat","slide":9,"text":"Actionable backend intelligence","textPreview":"Actionable backend intelligence","textChars":31,"textLines":1,"bbox":[484,274,250,58]}
+{"kind":"textbox","id":"sh/fyxobm58","slide":9,"text":"Scores, diversions, station context, and route logic are exposed through clean APIs.","textPreview":"Scores, diversions, station context, and route logic are exposed through clean APIs.","textChars":84,"textLines":1,"bbox":[484,362,260,108]}
+{"kind":"shape","id":"sh/qd4vmtwr","slide":9,"bbox":[834,246,330,270]}
+{"kind":"textbox","id":"sh/sfil0rqd","slide":9,"text":"A system that learns","textPreview":"A system that learns","textChars":20,"textLines":1,"bbox":[858,274,250,58]}
+{"kind":"textbox","id":"sh/h0fepkzu","slide":9,"text":"Weekly correction closes the loop with real field feedback and preserved weekly memory.","textPreview":"Weekly correction closes the loop with real field feedback and preserved weekly memory.","textChars":87,"textLines":1,"bbox":[858,362,260,108]}
+{"kind":"textbox","id":"sh/a9w3m94f","slide":9,"text":"GridLock • Adaptive Command Infrastructure","textPreview":"GridLock • Adaptive Command Infrastructure","textChars":42,"textLines":1,"bbox":[72,684,320,18]}
+{"kind":"notes","id":"nt/2th8ua","slide":9,"text":""}
+{"kind":"slide","id":"sl/fco6xl","slide":10,"title":"PROJECT DEMO CLOSE","textShapes":5}
+{"kind":"shape","id":"sh/cfa9w3m9","slide":10,"bbox":[934,66,230,230]}
+{"kind":"textbox","id":"sh/judg7ads","slide":10,"text":"PROJECT DEMO CLOSE","textPreview":"PROJECT DEMO CLOSE","textChars":18,"textLines":1,"bbox":[72,110,178,30]}
+{"kind":"textbox","id":"sh/u9knih4b","slide":10,"text":"GridLock turns city traffic operations into a live, learning command platform.","textPreview":"GridLock turns city traffic operations into a live, learning command platform.","textChars":78,"textLines":1,"bbox":[72,184,820,132]}
+{"kind":"textbox","id":"sh/1orytsvu","slide":10,"text":"Monitor the city, prioritize the right hotspots, route around disruption, and get smarter after every week.","textPreview":"Monitor the city, prioritize the right hotspots, route around disruption, and get smarter after every week.","textChars":107,"textLines":1,"bbox":[74,344,700,78]}
+{"kind":"shape","id":"sh/c7u54zid","slide":10,"bbox":[74,474,420,120]}
+{"kind":"textbox","id":"sh/jm1cfa9w","slide":10,"text":"Frontend + Backend + Engine + Learning Loop\nall presented as one demoable product story.","textPreview":"Frontend + Backend + Engine + Learning Loop | all presented as one demoable product story.","textChars":88,"textLines":2,"bbox":[100,506,360,54]}
+{"kind":"textbox","id":"sh/u18jqh0f","slide":10,"text":"GridLock • End of Demo Deck","textPreview":"GridLock • End of Demo Deck","textChars":27,"textLines":1,"bbox":[72,684,320,18]}
+{"kind":"notes","id":"nt/fco6xl","slide":10,"text":""}

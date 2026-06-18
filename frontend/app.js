@@ -1,5 +1,9 @@
 const CORRECTION_HISTORY_KEY = "gridlock-weekly-corrections-v1";
 const MIN_CORRECTION_PANEL_MS = 1200;
+const PANEL_WIDTH_KEY = "gridlock-operations-panel-width-v1";
+const PANEL_WIDTH_DEFAULT = 340;
+const PANEL_WIDTH_MIN = 320;
+const PANEL_WIDTH_MAX = 520;
 
 function delay(ms) {
   return new Promise((resolve) => {
@@ -37,6 +41,8 @@ const state = {
   correctionHistory: loadCorrectionHistory(),
   correctionRunning: false,
   activeCorrectionKey: null,
+  selectedRouteId: null,
+  activeRouteAnimation: null,
 };
 
 const map = L.map("map", {
@@ -52,8 +58,13 @@ L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
 
 const hotspotLayer = L.layerGroup().addTo(map);
 const policeLayer = L.layerGroup().addTo(map);
+const routeLayer = L.layerGroup().addTo(map);
+const routeEndpointLayer = L.layerGroup().addTo(map);
 
 const elements = {
+  appShell: document.querySelector(".app-shell"),
+  dashboardLayout: document.querySelector(".dashboard-layout"),
+  intelPanel: document.querySelector(".intel-panel"),
   bannerTitle: document.getElementById("bannerTitle"),
   bannerText: document.getElementById("bannerText"),
   selectedDateLabel: document.getElementById("selectedDateLabel"),
@@ -68,6 +79,10 @@ const elements = {
   priorityBarricadeValue: document.getElementById("priorityBarricadeValue"),
   eventFeed: document.getElementById("eventFeed"),
   routeResults: document.getElementById("routeResults"),
+  routeOriginStation: document.getElementById("routeOriginStation"),
+  routeDestinationEvent: document.getElementById("routeDestinationEvent"),
+  routeModeLabel: document.getElementById("routeModeLabel"),
+  routeSubmitButton: document.getElementById("routeSubmitButton"),
   timelineBar: document.getElementById("timelineBar"),
   windowLabel: document.getElementById("windowLabel"),
   reviewFeed: document.getElementById("reviewFeed"),
@@ -91,7 +106,85 @@ const elements = {
   correctionPanelBody: document.getElementById("correctionPanelBody"),
   correctionCollapseButton: document.getElementById("correctionCollapseButton"),
   correctionCollapseAction: document.getElementById("correctionCollapseAction"),
+  panelResizerShell: document.querySelector(".panel-resizer-shell"),
+  panelResizerHandle: document.getElementById("panelResizerHandle"),
+  panelResizerToggle: document.getElementById("panelResizerToggle"),
 };
+
+function clampPanelWidth(width) {
+  return Math.min(PANEL_WIDTH_MAX, Math.max(PANEL_WIDTH_MIN, width));
+}
+
+function applyPanelWidth(width, persist = true) {
+  const nextWidth = clampPanelWidth(width);
+  document.documentElement.style.setProperty("--intel-panel-width", `${nextWidth}px`);
+  if (persist) {
+    localStorage.setItem(PANEL_WIDTH_KEY, String(nextWidth));
+  }
+  if (elements.panelResizerToggle) {
+    const expanded = nextWidth >= 420;
+    elements.panelResizerToggle.textContent = expanded ? "⇤" : "⇥";
+    elements.panelResizerToggle.title = expanded
+      ? "Shrink operations panel"
+      : "Expand operations panel";
+    elements.panelResizerToggle.setAttribute(
+      "aria-label",
+      expanded ? "Shrink operations panel" : "Expand operations panel",
+    );
+  }
+}
+
+function loadPanelWidthPreference() {
+  const raw = Number(localStorage.getItem(PANEL_WIDTH_KEY));
+  if (Number.isFinite(raw) && raw > 0) {
+    applyPanelWidth(raw, false);
+    return;
+  }
+  applyPanelWidth(PANEL_WIDTH_DEFAULT, false);
+}
+
+function setupPanelResize() {
+  loadPanelWidthPreference();
+  if (!elements.panelResizerHandle || !elements.panelResizerShell || !elements.panelResizerToggle) {
+    return;
+  }
+
+  let dragStartX = 0;
+  let dragStartWidth = PANEL_WIDTH_DEFAULT;
+
+  const stopDragging = () => {
+    elements.panelResizerShell.classList.remove("is-dragging");
+    window.removeEventListener("pointermove", handlePointerMove);
+    window.removeEventListener("pointerup", stopDragging);
+  };
+
+  const handlePointerMove = (pointerEvent) => {
+    const delta = pointerEvent.clientX - dragStartX;
+    applyPanelWidth(dragStartWidth + delta);
+  };
+
+  elements.panelResizerHandle.addEventListener("pointerdown", (pointerEvent) => {
+    if (window.innerWidth <= 1180) {
+      return;
+    }
+    dragStartX = pointerEvent.clientX;
+    dragStartWidth = elements.intelPanel.getBoundingClientRect().width;
+    elements.panelResizerShell.classList.add("is-dragging");
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopDragging);
+  });
+
+  elements.panelResizerToggle.addEventListener("click", () => {
+    const currentWidth = elements.intelPanel.getBoundingClientRect().width;
+    applyPanelWidth(currentWidth >= 420 ? PANEL_WIDTH_DEFAULT : 440);
+  });
+
+  window.addEventListener("resize", () => {
+    if (window.innerWidth <= 1180) {
+      stopDragging();
+    }
+  });
+}
 
 function showToast(message) {
   elements.toast.textContent = message;
@@ -463,6 +556,22 @@ function impactBadge(score, color) {
   return `<span class="impact-badge" style="background:#f2ece2;color:${color};border:1px solid #ddd1bf">${score}</span>`;
 }
 
+function routeSourceLabel(routeSource) {
+  if (routeSource === "google_gridlock_reranked") {
+    return "Live reranked";
+  }
+  return "GridLock fallback";
+}
+
+function renderRouteEmptyState(title, message) {
+  elements.routeResults.innerHTML = `
+    <div class="route-empty-state">
+      <strong>${title}</strong>
+      <p class="route-meta">${message}</p>
+    </div>
+  `;
+}
+
 function createHotspotIcon(color) {
   return L.divIcon({
     className: "",
@@ -496,6 +605,88 @@ function clearRecommendationCard() {
   elements.priorityRiskValue.textContent = "--";
   elements.priorityOfficerValue.textContent = "--";
   elements.priorityBarricadeValue.textContent = "--";
+}
+
+function updateRoutePlannerContext() {
+  if (!state.selectedEvent) {
+    elements.routeOriginStation.textContent = "Select a hotspot";
+    elements.routeDestinationEvent.textContent = "Select a hotspot";
+    elements.routeModeLabel.textContent = "Google Routes + GridLock reranking";
+    elements.routeSubmitButton.disabled = true;
+    return;
+  }
+  elements.routeOriginStation.textContent = state.selectedEvent.police_station.station_name;
+  elements.routeDestinationEvent.textContent = state.selectedEvent.zone || "Zone unavailable";
+  elements.routeModeLabel.textContent = "Assigned station to congestion source";
+  elements.routeSubmitButton.disabled = false;
+}
+
+function clearRouteVisualization() {
+  routeLayer.clearLayers();
+  routeEndpointLayer.clearLayers();
+  if (state.activeRouteAnimation) {
+    cancelAnimationFrame(state.activeRouteAnimation);
+    state.activeRouteAnimation = null;
+  }
+}
+
+function decodePathPoints(route) {
+  const pathPoints = route.path_points || route.waypoints || [];
+  return pathPoints
+    .map((point) => [Number(point.latitude), Number(point.longitude)])
+    .filter((point) => Number.isFinite(point[0]) && Number.isFinite(point[1]));
+}
+
+function animateRouteSelection(route) {
+  const path = decodePathPoints(route);
+  if (path.length < 2) {
+    return;
+  }
+  clearRouteVisualization();
+  const basePolyline = L.polyline([], {
+    color: "#1e4faf",
+    weight: 5,
+    opacity: 0.92,
+    lineCap: "round",
+    lineJoin: "round",
+  }).addTo(routeLayer);
+  const haloPolyline = L.polyline([], {
+    color: "#8fb5ff",
+    weight: 10,
+    opacity: 0.28,
+    lineCap: "round",
+    lineJoin: "round",
+  }).addTo(routeLayer);
+  L.circleMarker(path[0], {
+    radius: 9,
+    color: "#ffffff",
+    weight: 2,
+    fillColor: "#0a2a73",
+    fillOpacity: 1,
+  }).addTo(routeEndpointLayer);
+  L.circleMarker(path[path.length - 1], {
+    radius: 9,
+    color: "#ffffff",
+    weight: 2,
+    fillColor: route.recommended ? "#22c1a7" : "#f18d38",
+    fillOpacity: 1,
+  }).addTo(routeEndpointLayer);
+  map.fitBounds(L.latLngBounds(path), { padding: [54, 54] });
+
+  let index = 1;
+  const increment = Math.max(1, Math.ceil(path.length / 26));
+  const step = () => {
+    const visiblePath = path.slice(0, index + 1);
+    basePolyline.setLatLngs(visiblePath);
+    haloPolyline.setLatLngs(visiblePath);
+    if (index < path.length - 1) {
+      index = Math.min(path.length - 1, index + increment);
+      state.activeRouteAnimation = requestAnimationFrame(step);
+      return;
+    }
+    state.activeRouteAnimation = null;
+  };
+  state.activeRouteAnimation = requestAnimationFrame(step);
 }
 
 async function loadCalendarWindow(windowIndex = 0) {
@@ -557,6 +748,10 @@ async function loadDay(dateKey) {
   renderSummary(data.summary);
   renderEventFeed(data.events);
   renderMap(data.events, data.police_markers);
+  updateRoutePlannerContext();
+  state.selectedRouteId = null;
+  renderRouteEmptyState("Select a hotspot", "Pick a hotspot from the feed or map to generate a route from the assigned police station.");
+  clearRouteVisualization();
   const defaultEvent = data.events[0] || null;
   if (defaultEvent) {
     setSelectedEvent(defaultEvent.event_id);
@@ -564,6 +759,8 @@ async function loadDay(dateKey) {
     state.selectedEvent = null;
     clearRecommendationCard();
     fillDetailDock(null);
+    updateRoutePlannerContext();
+    renderRouteEmptyState("No hotspots on this date", "Move the timeline to another date with active congestion events to enable route suggestions.");
   }
 }
 
@@ -674,6 +871,10 @@ function setSelectedEvent(eventId) {
   renderEventFeed(state.dayData.events);
   fillRecommendationCard(event);
   fillDetailDock(event);
+  updateRoutePlannerContext();
+  state.selectedRouteId = null;
+  renderRouteEmptyState("Ready to route", "Click “Suggest Optimal Route” to compare the assigned station path to this congestion source.");
+  clearRouteVisualization();
   hotspotLayer.eachLayer((layer) => {
     if (layer.eventId === eventId) {
       map.flyTo([event.latitude, event.longitude], Math.max(map.getZoom(), 13), { duration: 0.8 });
@@ -826,43 +1027,99 @@ function buildFeedbackPayload(reviewEvent, formData) {
 async function submitRoute(event) {
   event.preventDefault();
   if (!state.selectedEvent) {
+    renderRouteEmptyState("Select a hotspot", "Pick a hotspot from the feed or map before requesting an optimal route.");
     showToast("Select a hotspot first to route around it.");
     return;
   }
-  const formData = new FormData(event.target);
-  const payload = {
-    origin_latitude: Number(formData.get("origin_latitude")),
-    origin_longitude: Number(formData.get("origin_longitude")),
-    destination_latitude: Number(formData.get("destination_latitude")),
-    destination_longitude: Number(formData.get("destination_longitude")),
-    alternatives: 3,
-    event_context: {
-      event_cause: state.selectedEvent.event_cause,
-      priority: state.selectedEvent.priority,
-      requires_road_closure: state.selectedEvent.requires_road_closure,
-      latitude: state.selectedEvent.latitude,
-      longitude: state.selectedEvent.longitude,
-      event_type: state.selectedEvent.event_type,
-    },
-  };
-  const data = await fetchJson("/routes/recommend", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  state.routeData = data;
-  elements.routeResults.innerHTML = data.routes.map((route) => `
-    <div class="route-card">
-      <div class="route-card-top">
-        <div>
-          <strong>${route.route_label}${route.recommended ? " - Recommended" : ""}</strong>
-          <p class="route-meta">${route.waypoints.slice(1, -1).map((point) => point.corridor).filter(Boolean).slice(0, 4).join(" -> ")}</p>
+
+  try {
+    elements.routeSubmitButton.disabled = true;
+    elements.routeSubmitButton.textContent = "Finding Route...";
+    const payload = {
+      event_id: state.selectedEvent.event_id,
+      alternatives: 3,
+    };
+    const data = await fetchJson("/routes/recommend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    state.routeData = data;
+    if (!data.routes.length) {
+      renderRouteEmptyState("No routes available", "Try another hotspot or retry once live routing is available.");
+      clearRouteVisualization();
+      return;
+    }
+
+    state.selectedRouteId = null;
+    elements.routeModeLabel.textContent = data.route_source === "google_gridlock_reranked"
+      ? "Google Routes + GridLock reranking"
+      : "GridLock fallback routing";
+    elements.routeResults.innerHTML = data.routes.map((route) => `
+      <button class="route-card" data-route-id="${route.route_label}" type="button">
+        <div class="route-card-top">
+          <div>
+            <strong>${route.route_label}${route.recommended ? " - Recommended" : ""}</strong>
+            <p class="route-meta">${route.origin_station?.station_name || state.selectedEvent.police_station.station_name} Police Station &rarr; ${route.destination_event?.zone || state.selectedEvent.zone || "Zone unavailable"}</p>
+          </div>
+          <div class="route-metric-badge" title="Normalized GridLock exposure score">Exposure ${route.gridlock_exposure_score}/100</div>
         </div>
-        <div>${route.average_exposure_score}</div>
-      </div>
-      <p class="route-meta">${route.estimated_distance_km} km - Travel multiplier ${route.estimated_travel_multiplier}</p>
-    </div>
-  `).join("");
+        <div class="route-metric-grid">
+          <div class="route-metric-cell">
+            <span>ETA</span>
+            <strong>${route.google_duration_minutes ? `${route.google_duration_minutes} min` : "--"}</strong>
+          </div>
+          <div class="route-metric-cell">
+            <span>Distance</span>
+            <strong>${route.google_distance_km ?? route.estimated_distance_km} km</strong>
+          </div>
+          <div class="route-metric-cell">
+            <span>Exposure</span>
+            <strong>${route.gridlock_exposure_score}/100</strong>
+          </div>
+        </div>
+        <p class="route-meta"><strong>Why this rank:</strong> ${route.rerank_reason}</p>
+        <div class="route-card-top">
+          <span class="route-source-badge">${routeSourceLabel(route.route_source)}</span>
+          <span class="route-meta">${route.recommended ? "Best operational route" : "Alternative path"}</span>
+        </div>
+      </button>
+    `).join("");
+
+    elements.routeResults.querySelectorAll(".route-card").forEach((button) => {
+      button.addEventListener("click", () => {
+        const route = data.routes.find((item) => item.route_label === button.dataset.routeId);
+        if (!route) {
+          return;
+        }
+        state.selectedRouteId = route.route_label;
+        elements.routeResults.querySelectorAll(".route-card").forEach((card) => {
+          card.classList.toggle("active", card === button);
+        });
+        animateRouteSelection(route);
+      });
+    });
+
+    const recommendedRoute = data.routes.find((route) => route.recommended) || data.routes[0];
+    if (recommendedRoute) {
+      state.selectedRouteId = recommendedRoute.route_label;
+      const recommendedButton = elements.routeResults.querySelector(`[data-route-id="${recommendedRoute.route_label}"]`);
+      if (recommendedButton) {
+        recommendedButton.classList.add("active");
+      }
+      animateRouteSelection(recommendedRoute);
+    }
+  } catch (error) {
+    state.routeData = null;
+    state.selectedRouteId = null;
+    clearRouteVisualization();
+    elements.routeModeLabel.textContent = "Google Routes + GridLock reranking";
+    renderRouteEmptyState("Route suggestion unavailable", "Check the backend service or Google Routes configuration, then try again.");
+    showToast("Unable to fetch route suggestions.");
+  } finally {
+    elements.routeSubmitButton.disabled = !state.selectedEvent;
+    elements.routeSubmitButton.textContent = "Suggest Optimal Route";
+  }
 }
 
 function setupTabs() {
@@ -974,6 +1231,7 @@ function setupControls() {
 
 async function bootstrap() {
   renderCorrectionArchive();
+  setupPanelResize();
   setupControls();
   try {
     await loadCalendarWindowsList();
@@ -985,3 +1243,4 @@ async function bootstrap() {
 }
 
 bootstrap();
+

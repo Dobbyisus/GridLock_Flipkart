@@ -2,7 +2,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -38,10 +38,12 @@ class PredictionRequest(BaseModel):
 
 
 class RouteRequest(BaseModel):
-    origin_latitude: float
-    origin_longitude: float
-    destination_latitude: float
-    destination_longitude: float
+    event_id: Optional[str] = None
+    origin_latitude: Optional[float] = None
+    origin_longitude: Optional[float] = None
+    destination_latitude: Optional[float] = None
+    destination_longitude: Optional[float] = None
+    origin_station_name: Optional[str] = None
     event_context: Optional[PredictionRequest] = None
     alternatives: int = Field(default=3, ge=1, le=4)
 
@@ -163,21 +165,52 @@ def evaluate_alert(data: PredictionRequest):
 
 @app.post("/routes/recommend")
 def recommend_route(data: RouteRequest):
+    origin_station = None
+    destination_event = None
     event_context = None
-    if data.event_context:
+    origin_latitude = data.origin_latitude
+    origin_longitude = data.origin_longitude
+    destination_latitude = data.destination_latitude
+    destination_longitude = data.destination_longitude
+
+    if data.event_id:
+        route_context = ENGINE.get_route_context(data.event_id)
+        if not route_context:
+            raise HTTPException(status_code=404, detail="Selected event was not found.")
+        destination_event = route_context["destination_event"]
+        origin_station = route_context["origin_station"]
+        origin_latitude = origin_station["latitude"]
+        origin_longitude = origin_station["longitude"]
+        destination_latitude = destination_event["latitude"]
+        destination_longitude = destination_event["longitude"]
+        event_context = {
+            "latitude": destination_event["latitude"],
+            "longitude": destination_event["longitude"],
+            "impact_score": destination_event["impact_score"],
+        }
+    elif data.event_context:
         predicted = predict(data.event_context)
         event_context = {
             "latitude": data.event_context.latitude,
             "longitude": data.event_context.longitude,
             "impact_score": predicted["impact_score"],
         }
+        if data.origin_station_name:
+            origin_station = ENGINE._station_payload(data.origin_station_name)
+    if None in (origin_latitude, origin_longitude, destination_latitude, destination_longitude):
+        raise HTTPException(
+            status_code=422,
+            detail="Route request requires either event_id or explicit origin/destination coordinates.",
+        )
     return ENGINE.recommend_route(
-        origin_latitude=data.origin_latitude,
-        origin_longitude=data.origin_longitude,
-        destination_latitude=data.destination_latitude,
-        destination_longitude=data.destination_longitude,
+        origin_latitude=origin_latitude,
+        origin_longitude=origin_longitude,
+        destination_latitude=destination_latitude,
+        destination_longitude=destination_longitude,
         event_context=event_context,
         alternatives=data.alternatives,
+        origin_station=origin_station,
+        destination_event=destination_event,
     )
 
 

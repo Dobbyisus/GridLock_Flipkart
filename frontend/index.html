@@ -13,7 +13,7 @@
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
     crossorigin=""
   />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=route-hotspot-v7" />
 </head>
 <body>
   <div class="app-shell">
@@ -102,25 +102,21 @@
           <div class="section-card">
             <p class="card-label">Route Planner</p>
             <form class="route-form" id="routeForm">
-              <div class="route-grid">
-                <label>
-                  Origin Lat
-                  <input type="number" step="0.0001" name="origin_latitude" value="12.9352" required />
-                </label>
-                <label>
-                  Origin Lon
-                  <input type="number" step="0.0001" name="origin_longitude" value="77.6245" required />
-                </label>
-                <label>
-                  Destination Lat
-                  <input type="number" step="0.0001" name="destination_latitude" value="13.0304" required />
-                </label>
-                <label>
-                  Destination Lon
-                  <input type="number" step="0.0001" name="destination_longitude" value="77.5671" required />
-                </label>
+              <div class="route-context-card">
+                <div class="route-context-row">
+                  <span class="route-context-label">Assigned Police Station</span>
+                  <strong id="routeOriginStation">Select a hotspot</strong>
+                </div>
+                <div class="route-context-row">
+                  <span class="route-context-label">Destination Zone</span>
+                  <strong id="routeDestinationEvent">Select a hotspot</strong>
+                </div>
+                <div class="route-context-row">
+                  <span class="route-context-label">Routing Mode</span>
+                  <strong id="routeModeLabel">Google Routes + GridLock reranking</strong>
+                </div>
               </div>
-              <button class="primary-action" type="submit">Find Better Route</button>
+              <button class="primary-action" id="routeSubmitButton" type="submit">Suggest Optimal Route</button>
             </form>
             <div class="route-results" id="routeResults"></div>
           </div>
@@ -147,6 +143,25 @@
           </div>
         </section>
       </aside>
+
+      <div class="panel-resizer-shell" aria-hidden="false">
+        <button
+          class="panel-resizer-toggle"
+          id="panelResizerToggle"
+          type="button"
+          aria-label="Expand operations panel"
+          title="Expand operations panel"
+        >
+          ⇔
+        </button>
+        <div
+          class="panel-resizer-handle"
+          id="panelResizerHandle"
+          role="separator"
+          aria-label="Resize operations panel"
+          aria-orientation="vertical"
+        ></div>
+      </div>
 
       <section class="map-stage">
         <div id="map"></div>
@@ -247,7 +262,7 @@
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
     crossorigin=""
   ></script>
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=route-hotspot-v7"></script>
 </body>
 </html>
 

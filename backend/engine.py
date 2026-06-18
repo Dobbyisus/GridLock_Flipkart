@@ -7,6 +7,11 @@ from heapq import heappop, heappush
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+try:
+    from .google_routes import GoogleRoutesClient
+except ImportError:
+    from google_routes import GoogleRoutesClient
+
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_PATH = BASE_DIR / "data" / "ProblemStatement2_Data_Gridlock.csv"
@@ -149,6 +154,8 @@ class GridlockRecommendationEngine:
         self.prediction_cache: Dict[str, Dict[str, Any]] = {}
         self.station_index = self._build_station_index()
         self.date_index = self._build_date_index()
+        self.event_lookup = {event["id"]: event for event in self.events}
+        self.google_routes_client = GoogleRoutesClient(BASE_DIR.parent)
 
     def _load_events(self) -> List[Dict[str, Any]]:
         events: List[Dict[str, Any]] = []
@@ -477,6 +484,9 @@ class GridlockRecommendationEngine:
                 "historical_event_count": 0,
             },
         )
+
+    def _event_record(self, event_id: str) -> Optional[Dict[str, Any]]:
+        return self.event_lookup.get(event_id)
 
     def _event_dashboard_payload(self, event: Dict[str, Any]) -> Dict[str, Any]:
         prediction = self._predict_event_record(event)
@@ -965,6 +975,167 @@ class GridlockRecommendationEngine:
     def _node_lookup(self) -> Dict[str, Dict[str, Any]]:
         return {node["grid_id"]: node for node in self.analytics["graph_nodes"]}
 
+    def _sample_route_points(
+        self, path_points: List[Dict[str, float]], max_points: int = 24
+    ) -> List[Tuple[float, float]]:
+        if not path_points:
+            return []
+        if len(path_points) <= max_points:
+            return [
+                (float(point["latitude"]), float(point["longitude"]))
+                for point in path_points
+            ]
+        sampled: List[Tuple[float, float]] = []
+        last_index = len(path_points) - 1
+        for index in range(max_points):
+            point_index = round(index * last_index / max(max_points - 1, 1))
+            point = path_points[point_index]
+            sampled.append((float(point["latitude"]), float(point["longitude"])))
+        return sampled
+
+    def _route_exposure_score(
+        self,
+        path_points: List[Dict[str, float]],
+        hazard: Optional[Dict[str, Any]] = None,
+    ) -> float:
+        sampled_points = self._sample_route_points(path_points)
+        if not sampled_points:
+            return 100.0
+        exposures = [
+            self._nearest_grid_score(latitude, longitude)
+            for latitude, longitude in sampled_points
+        ]
+        average_exposure = sum(exposures) / len(exposures)
+        hazard_penalty = 0.0
+        if hazard:
+            for latitude, longitude in sampled_points:
+                hazard_distance = haversine_km(
+                    (latitude, longitude),
+                    (hazard["latitude"], hazard["longitude"]),
+                )
+                if hazard_distance < hazard["avoidance_radius_km"]:
+                    hazard_penalty += (
+                        (hazard["impact_score"] / 100.0)
+                        * (hazard["avoidance_radius_km"] - hazard_distance)
+                        * 8.0
+                    )
+        return round(average_exposure + hazard_penalty, 2)
+
+    def _normalize_exposure_score(self, raw_exposure_score: float) -> int:
+        floor_score = 75.0
+        ceiling_score = 350.0
+        clamped_score = clamp(raw_exposure_score, floor_score, ceiling_score)
+        normalized_score = 1 + (
+            ((clamped_score - floor_score) / (ceiling_score - floor_score)) * 99.0
+        )
+        return int(round(clamp(normalized_score, 1.0, 100.0)))
+
+    def _route_rank_score(
+        self,
+        exposure_score: float,
+        duration_seconds: float,
+        baseline_duration_seconds: float,
+    ) -> float:
+        duration_penalty = 0.0
+        if baseline_duration_seconds > 0:
+            duration_penalty = (
+                max(duration_seconds - baseline_duration_seconds, 0.0)
+                / baseline_duration_seconds
+            ) * 18.0
+        return round(exposure_score + duration_penalty, 2)
+
+    def _google_rerank_reason(
+        self,
+        normalized_exposure_score: int,
+        duration_seconds: float,
+        baseline_duration_seconds: float,
+    ) -> str:
+        minutes = round(duration_seconds / 60.0, 1)
+        if baseline_duration_seconds <= 0:
+            return f"Chosen for the lowest GridLock exposure score at roughly {minutes} min."
+        baseline_minutes = baseline_duration_seconds / 60.0
+        if normalized_exposure_score <= 35:
+            return (
+                f"Chosen for the safest corridor profile with low exposure ({normalized_exposure_score}/100) "
+                f"at about {minutes} min."
+            )
+        if duration_seconds <= baseline_duration_seconds * 1.08:
+            return (
+                f"Chosen for balanced live travel time ({minutes} min vs {baseline_minutes:.1f} min best) "
+                f"and lower congestion exposure."
+            )
+        return (
+            f"Chosen despite a slightly longer ETA ({minutes} min) because the risk path "
+            f"score is lower than faster alternatives."
+        )
+
+    def _format_google_reranked_routes(
+        self,
+        origin_station: Dict[str, Any],
+        destination_event: Dict[str, Any],
+        google_routes: List[Dict[str, Any]],
+        hazard: Optional[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        if not google_routes:
+            return []
+        baseline_duration_seconds = min(
+            (route["duration_seconds"] for route in google_routes),
+            default=0.0,
+        )
+        ranked_routes: List[Dict[str, Any]] = []
+        for route in google_routes:
+            raw_exposure_score = self._route_exposure_score(route["path_points"], hazard)
+            normalized_exposure_score = self._normalize_exposure_score(raw_exposure_score)
+            rank_score = self._route_rank_score(
+                exposure_score=raw_exposure_score,
+                duration_seconds=route["duration_seconds"],
+                baseline_duration_seconds=baseline_duration_seconds,
+            )
+            ranked_routes.append(
+                {
+                    "route_label": f"Option {len(ranked_routes) + 1}",
+                    "recommended": False,
+                    "route_source": "google_gridlock_reranked",
+                    "origin_station": origin_station,
+                    "destination_event": destination_event,
+                    "encoded_polyline": route["encoded_polyline"],
+                    "path_points": route["path_points"],
+                    "waypoints": route["path_points"],
+                    "google_duration_seconds": round(route["duration_seconds"], 2),
+                    "google_duration_minutes": round(route["duration_seconds"] / 60.0, 1),
+                    "google_distance_km": round(route["distance_meters"] / 1000.0, 2),
+                    "average_exposure_score": raw_exposure_score,
+                    "gridlock_exposure_score": normalized_exposure_score,
+                    "estimated_distance_km": round(route["distance_meters"] / 1000.0, 2),
+                    "estimated_travel_multiplier": round(
+                        1 + (normalized_exposure_score / 100.0),
+                        2,
+                    ),
+                    "rerank_score": rank_score,
+                    "rerank_reason": self._google_rerank_reason(
+                        normalized_exposure_score,
+                        route["duration_seconds"],
+                        baseline_duration_seconds,
+                    ),
+                    "travel_advisory": route.get("travel_advisory", {}),
+                }
+            )
+        ranked_routes.sort(key=lambda item: item["rerank_score"])
+        for index, route in enumerate(ranked_routes):
+            route["route_label"] = f"Option {index + 1}"
+            route["recommended"] = index == 0
+        return ranked_routes
+
+    def get_route_context(self, event_id: str) -> Optional[Dict[str, Any]]:
+        event = self._event_record(event_id)
+        if not event:
+            return None
+        destination_event = self._event_dashboard_payload(event)
+        return {
+            "origin_station": destination_event["police_station"],
+            "destination_event": destination_event,
+        }
+
     def _nearest_node_ids(
         self, latitude: float, longitude: float, limit: int = 4
     ) -> List[Tuple[str, float]]:
@@ -1103,7 +1274,7 @@ class GridlockRecommendationEngine:
             "estimated_travel_multiplier": round(1 + (average_exposure / 100.0), 2),
         }
 
-    def recommend_route(
+    def _recommend_route_fallback(
         self,
         origin_latitude: float,
         origin_longitude: float,
@@ -1111,6 +1282,8 @@ class GridlockRecommendationEngine:
         destination_longitude: float,
         event_context: Optional[Dict[str, Any]] = None,
         alternatives: int = 3,
+        origin_station: Optional[Dict[str, Any]] = None,
+        destination_event: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         hazard = None
         if event_context:
@@ -1132,6 +1305,18 @@ class GridlockRecommendationEngine:
                 break
             route["route_label"] = f"Option {len(ranked_routes) + 1}"
             route["recommended"] = len(ranked_routes) == 0
+            route["route_source"] = "gridlock_fallback"
+            route["origin_station"] = origin_station
+            route["destination_event"] = destination_event
+            route["encoded_polyline"] = None
+            route["path_points"] = route["waypoints"]
+            route["google_duration_seconds"] = None
+            route["google_duration_minutes"] = None
+            route["google_distance_km"] = None
+            route["gridlock_exposure_score"] = self._normalize_exposure_score(
+                route["average_exposure_score"]
+            )
+            route["rerank_reason"] = "Fallback GridLock route used because live Google routing was unavailable."
             ranked_routes.append(route)
             for node_id in route["path"][1:-1]:
                 used_penalties[node_id] = used_penalties.get(node_id, 0.0) + 1.0
@@ -1142,8 +1327,74 @@ class GridlockRecommendationEngine:
                 "longitude": destination_longitude,
             },
             "hazard_context": hazard,
+            "route_source": "gridlock_fallback",
+            "origin_station": origin_station,
+            "destination_event": destination_event,
             "routes": ranked_routes,
         }
+
+    def recommend_route(
+        self,
+        origin_latitude: float,
+        origin_longitude: float,
+        destination_latitude: float,
+        destination_longitude: float,
+        event_context: Optional[Dict[str, Any]] = None,
+        alternatives: int = 3,
+        origin_station: Optional[Dict[str, Any]] = None,
+        destination_event: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        hazard = None
+        if event_context:
+            impact_score = float(event_context.get("impact_score") or 0.0)
+            hazard = {
+                "latitude": float(event_context["latitude"]),
+                "longitude": float(event_context["longitude"]),
+                "impact_score": impact_score,
+                "avoidance_radius_km": round(1.2 + (impact_score / 100.0 * 4.8), 2),
+            }
+        google_result = self.google_routes_client.compute_routes(
+            origin=(origin_latitude, origin_longitude),
+            destination=(destination_latitude, destination_longitude),
+            alternatives=alternatives,
+        )
+        if google_result.get("ok"):
+            ranked_routes = self._format_google_reranked_routes(
+                origin_station=origin_station or self._station_payload("Control"),
+                destination_event=destination_event or {
+                    "event_id": None,
+                    "title": "Manual destination",
+                    "latitude": destination_latitude,
+                    "longitude": destination_longitude,
+                },
+                google_routes=google_result["routes"],
+                hazard=hazard,
+            )
+            if ranked_routes:
+                return {
+                    "origin": {"latitude": origin_latitude, "longitude": origin_longitude},
+                    "destination": {
+                        "latitude": destination_latitude,
+                        "longitude": destination_longitude,
+                    },
+                    "hazard_context": hazard,
+                    "route_source": "google_gridlock_reranked",
+                    "origin_station": origin_station,
+                    "destination_event": destination_event,
+                    "routes": ranked_routes,
+                }
+        fallback_result = self._recommend_route_fallback(
+            origin_latitude=origin_latitude,
+            origin_longitude=origin_longitude,
+            destination_latitude=destination_latitude,
+            destination_longitude=destination_longitude,
+            event_context=event_context,
+            alternatives=alternatives,
+            origin_station=origin_station,
+            destination_event=destination_event,
+        )
+        fallback_result["google_error"] = google_result.get("error")
+        return fallback_result
 
     def log_feedback(
         self,

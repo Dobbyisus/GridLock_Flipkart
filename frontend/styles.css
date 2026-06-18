@@ -18,6 +18,7 @@
   --radius-lg: 16px;
   --radius-md: 12px;
   --radius-sm: 10px;
+  --intel-panel-width: 340px;
 }
 
 * {
@@ -182,7 +183,7 @@ textarea {
 .dashboard-layout {
   min-height: 0;
   display: grid;
-  grid-template-columns: 272px minmax(0, 1fr);
+  grid-template-columns: var(--intel-panel-width) 16px minmax(0, 1fr);
   gap: 10px;
   align-items: stretch;
 }
@@ -194,6 +195,45 @@ textarea {
   display: flex;
   flex-direction: column;
   overflow: auto;
+}
+
+.panel-resizer-shell {
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 4px;
+}
+
+.panel-resizer-toggle {
+  align-self: center;
+  width: 16px;
+  min-width: 16px;
+  height: 84px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f8fbff 0%, #edf3ff 100%);
+  color: var(--navy-900);
+  font-size: 0.72rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06);
+}
+
+.panel-resizer-handle {
+  width: 8px;
+  border-radius: 999px;
+  cursor: col-resize;
+  background: linear-gradient(180deg, #edf3ff 0%, #dbe7ff 100%);
+  border: 1px solid #d3def4;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.panel-resizer-handle:hover,
+.panel-resizer-shell.is-dragging .panel-resizer-handle {
+  background: linear-gradient(180deg, #d9e6ff 0%, #bdd1ff 100%);
+  transform: scaleX(1.04);
 }
 
 .intel-panel,
@@ -374,8 +414,56 @@ label {
 }
 
 .route-results {
-  max-height: 128px;
+  max-height: 220px;
   margin-top: 10px;
+}
+
+.route-context-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f9fbff 0%, #f2f6ff 100%);
+  border: 1px solid #dce6f7;
+}
+
+.route-context-row {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e7edf8;
+}
+
+.route-context-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.route-context-label {
+  color: var(--text-soft);
+  font-size: 0.69rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.route-context-row strong {
+  color: var(--navy-900);
+  font-size: 0.98rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.route-empty-state {
+  padding: 12px;
+  border: 1px dashed #c8d2e2;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fbfcff 0%, #f5f8ff 100%);
+}
+
+.route-empty-state strong {
+  display: block;
+  margin-bottom: 4px;
 }
 
 .correction-archive-shell {
@@ -464,6 +552,11 @@ label {
   box-shadow: inset 0 0 0 1px #bcd0ff;
 }
 
+.route-card.active {
+  border-color: #bcd0ff;
+  box-shadow: inset 0 0 0 1px #bcd0ff;
+}
+
 .event-item strong,
 .review-item strong,
 .route-card strong,
@@ -484,6 +577,59 @@ label {
   border-radius: 999px;
   font-size: 0.72rem;
   font-weight: 700;
+}
+
+.route-source-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: var(--navy-900);
+  font-size: 0.67rem;
+  font-weight: 700;
+}
+
+.route-metric-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #f2f6ff;
+  color: var(--navy-900);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.route-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 8px;
+}
+
+.route-metric-cell {
+  padding: 8px;
+  border-radius: 10px;
+  background: #f8fbff;
+  border: 1px solid #e3ebfb;
+}
+
+.route-metric-cell span {
+  display: block;
+  color: var(--text-soft);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.route-metric-cell strong {
+  font-size: 0.8rem;
 }
 
 .route-form {
@@ -674,7 +820,7 @@ textarea {
 
 .timeline-shell {
   position: absolute;
-  left: 50%;
+  left: calc((100% + var(--intel-panel-width) + 36px) / 2);
   bottom: 14px;
   transform: translateX(-50%);
   width: 470px;
@@ -1132,11 +1278,16 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .panel-resizer-shell {
+    display: none;
+  }
+
   .map-stage {
     min-height: 620px;
   }
 
   .timeline-shell {
+    left: 50%;
     width: min(470px, calc(100% - 24px));
   }
 
