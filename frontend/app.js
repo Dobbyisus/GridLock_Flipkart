@@ -11,6 +11,7 @@ const EVENT_FEED_HEIGHT_MIN = 96;
 const EVENT_FEED_HEIGHT_MAX = 360;
 const LIVE_STATUS_POLL_MS = 60000;
 const ALERT_RECIPIENT_SESSION_KEY = "gridlock-station-alert-recipient-v1";
+const STATION_ALERT_COOLDOWN_MS = 30000;
 
 function delay(ms) {
   return new Promise((resolve) => {
@@ -102,6 +103,9 @@ const state = {
   liveRefreshSeenAt: null,
   livePollingHandle: null,
   alertRecipientEmail: loadAlertRecipient(),
+  stationAlertCooldownUntil: 0,
+  stationAlertCooldownHandle: null,
+  stationAlertSending: false,
 };
 
 const map = L.map("map", {
@@ -363,19 +367,53 @@ function formatApiErrorDetail(detail) {
 function updateStationAlertUi() {
   const recipientEmail = String(state.alertRecipientEmail || "").trim();
   const hasRecipient = Boolean(recipientEmail);
+  const remainingMs = Math.max(0, state.stationAlertCooldownUntil - Date.now());
+  const remainingSeconds = Math.ceil(remainingMs / 1000);
   if (elements.stationAlertRecipientInput && elements.stationAlertRecipientInput.value !== recipientEmail) {
     elements.stationAlertRecipientInput.value = recipientEmail;
   }
   if (elements.stationAlertRecipientNote) {
-    elements.stationAlertRecipientNote.textContent = hasRecipient
-      ? "Station alerts will use this email for the current session."
-      : "Add an email to enable station alerts for this session.";
+    if (!hasRecipient) {
+      elements.stationAlertRecipientNote.textContent = "Add an email to enable station alerts for this session.";
+    } else if (remainingSeconds > 0) {
+      elements.stationAlertRecipientNote.textContent = `Station alert sent. This action unlocks again in ${remainingSeconds}s.`;
+    } else {
+      elements.stationAlertRecipientNote.textContent = "Station alerts will use this email for the current session.";
+    }
   }
   if (elements.stationAlertButton) {
-    elements.stationAlertButton.title = hasRecipient
-      ? "Send the selected hotspot summary to this email"
-      : "Add an email to enable station alerts";
+    if (state.stationAlertSending) {
+      elements.stationAlertButton.disabled = true;
+      elements.stationAlertButton.textContent = "Sending Alert...";
+      elements.stationAlertButton.title = "Sending the selected hotspot summary";
+      return;
+    }
+    elements.stationAlertButton.disabled = !hasRecipient || remainingSeconds > 0;
+    elements.stationAlertButton.textContent = remainingSeconds > 0
+      ? `Raise Station Alert (${remainingSeconds}s)`
+      : "Raise Station Alert";
+    elements.stationAlertButton.title = !hasRecipient
+      ? "Add an email to enable station alerts"
+      : remainingSeconds > 0
+        ? `Station alert will be available again in ${remainingSeconds}s`
+        : "Send the selected hotspot summary to this email";
   }
+}
+
+function startStationAlertCooldown() {
+  state.stationAlertCooldownUntil = Date.now() + STATION_ALERT_COOLDOWN_MS;
+  if (state.stationAlertCooldownHandle) {
+    clearInterval(state.stationAlertCooldownHandle);
+  }
+  updateStationAlertUi();
+  state.stationAlertCooldownHandle = setInterval(() => {
+    if (Date.now() >= state.stationAlertCooldownUntil) {
+      clearInterval(state.stationAlertCooldownHandle);
+      state.stationAlertCooldownHandle = null;
+      state.stationAlertCooldownUntil = 0;
+    }
+    updateStationAlertUi();
+  }, 1000);
 }
 
 function formatDate(dateText) {
@@ -1856,9 +1894,14 @@ async function raiseStationAlert() {
     updateStationAlertUi();
     return;
   }
-  const stationAlertButton = elements.stationAlertButton;
-  stationAlertButton.disabled = true;
-  stationAlertButton.textContent = "Sending Alert...";
+  const remainingMs = Math.max(0, state.stationAlertCooldownUntil - Date.now());
+  if (remainingMs > 0) {
+    showToast(`Station alert will be available again in ${Math.ceil(remainingMs / 1000)} seconds.`);
+    updateStationAlertUi();
+    return;
+  }
+  state.stationAlertSending = true;
+  updateStationAlertUi();
   try {
     const data = await fetchJson("/alerts/station-email", {
       method: "POST",
@@ -1868,11 +1911,12 @@ async function raiseStationAlert() {
         recipient_email: recipientEmail,
       }),
     });
-    showToast(`Station alert sent to ${data.recipient}.`);
+    startStationAlertCooldown();
+    showToast(`Station alert sent to ${data.recipient}. You can send the next alert in 30 seconds.`);
   } catch (error) {
     showToast(error.message || "Unable to send station alert.");
   } finally {
-    stationAlertButton.textContent = "Raise Station Alert";
+    state.stationAlertSending = false;
     updateStationAlertUi();
   }
 }
