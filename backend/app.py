@@ -1,5 +1,6 @@
 from datetime import datetime
 from email.message import EmailMessage
+from email.utils import parseaddr
 from pathlib import Path
 import smtplib
 from typing import Optional
@@ -26,7 +27,6 @@ app = FastAPI(
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
-DEFAULT_ALERT_EMAIL_TO = "shashwattiwari884@gmail.com"
 DEFAULT_ALERT_EMAIL_FROM = "Operator Alert <shashwattiwari884@gmail.com>"
 
 
@@ -91,6 +91,7 @@ class ManualEventRequest(BaseModel):
 
 class StationAlertRequest(BaseModel):
     event_id: str
+    recipient_email: str
 
 
 def _smtp_host() -> Optional[str]:
@@ -113,12 +114,13 @@ def _smtp_password() -> Optional[str]:
     return _load_config_value("SMTP_PASSWORD", PROJECT_ROOT)
 
 
-def _alert_email_to() -> str:
-    return _load_config_value("ALERT_EMAIL_TO", PROJECT_ROOT, DEFAULT_ALERT_EMAIL_TO) or DEFAULT_ALERT_EMAIL_TO
-
-
 def _alert_email_from() -> str:
     return _load_config_value("ALERT_EMAIL_FROM", PROJECT_ROOT, DEFAULT_ALERT_EMAIL_FROM) or DEFAULT_ALERT_EMAIL_FROM
+
+
+def _is_valid_recipient_email(value: str) -> bool:
+    _, parsed = parseaddr((value or "").strip())
+    return bool(parsed and "@" in parsed and " " not in parsed)
 
 
 def _station_alert_subject(event: dict) -> str:
@@ -201,7 +203,7 @@ def _station_alert_html(event: dict, origin_station: dict) -> str:
     """.strip()
 
 
-def _send_station_alert_email(event: dict, origin_station: dict) -> dict:
+def _send_station_alert_email(event: dict, origin_station: dict, recipient_email: str) -> dict:
     smtp_host = _smtp_host()
     smtp_username = _smtp_username()
     smtp_password = _smtp_password()
@@ -211,7 +213,7 @@ def _send_station_alert_email(event: dict, origin_station: dict) -> dict:
     message = EmailMessage()
     message["Subject"] = _station_alert_subject(event)
     message["From"] = _alert_email_from()
-    message["To"] = _alert_email_to()
+    message["To"] = recipient_email
     message.set_content(_station_alert_text(event, origin_station))
     message.add_alternative(_station_alert_html(event, origin_station), subtype="html")
     try:
@@ -224,7 +226,7 @@ def _send_station_alert_email(event: dict, origin_station: dict) -> dict:
         return {
             "transport": "smtp",
             "host": smtp_host,
-            "recipient": _alert_email_to(),
+            "recipient": recipient_email,
         }
     except smtplib.SMTPAuthenticationError as exc:
         raise HTTPException(status_code=502, detail="SMTP authentication failed. Check the Gmail app password.") from exc
@@ -323,16 +325,20 @@ def create_manual_event(data: ManualEventRequest):
 
 @app.post("/alerts/station-email")
 def send_station_alert(data: StationAlertRequest):
+    recipient_email = data.recipient_email.strip()
+    if not _is_valid_recipient_email(recipient_email):
+        raise HTTPException(status_code=422, detail="Recipient email is required to send a station alert.")
     route_context = ENGINE.get_route_context(data.event_id)
     if not route_context:
         raise HTTPException(status_code=404, detail="Selected hotspot was not found.")
     provider_response = _send_station_alert_email(
         route_context["destination_event"],
         route_context["origin_station"],
+        recipient_email,
     )
     return {
         "sent": True,
-        "recipient": _alert_email_to(),
+        "recipient": recipient_email,
         "provider": "smtp",
         "provider_response": provider_response,
     }
