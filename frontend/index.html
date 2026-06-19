@@ -92,10 +92,19 @@
             <button class="secondary-action" id="stationAlertButton" type="button">Raise Station Alert</button>
           </div>
 
-          <div class="section-card">
+          <div class="section-card hotspot-feed-card">
             <div class="section-head">
               <p class="card-label">Hotspot Feed</p>
               <span id="windowLabel">Window --</span>
+            </div>
+            <div class="feed-resizer-shell">
+              <div
+                class="feed-resizer-handle"
+                id="eventFeedResizerHandle"
+                role="separator"
+                aria-label="Resize hotspot feed"
+                aria-orientation="vertical"
+              ></div>
             </div>
             <div class="event-feed" id="eventFeed"></div>
           </div>
@@ -316,6 +325,22 @@
         <button class="secondary-action correction-collapse-action" id="correctionCollapseAction" type="button">
           Collapse to info icon
         </button>
+      </div>
+    </section>
+  </div>
+  <div class="hotspot-impact-overlay" id="hotspotImpactOverlay" hidden>
+    <section class="hotspot-impact-modal" role="dialog" aria-modal="true" aria-labelledby="hotspotImpactTitle">
+      <div class="manual-event-head">
+        <div>
+          <p class="card-label">Hotspot Impact</p>
+          <h3 id="hotspotImpactTitle">Loading impact detail</h3>
+          <p class="manual-event-subtext" id="hotspotImpactSubtitle">Road-level impact will appear here on demand.</p>
+        </div>
+        <button class="manual-event-close" id="hotspotImpactCloseButton" type="button" aria-label="Close hotspot impact panel">×</button>
+      </div>
+      <div class="hotspot-impact-body" id="hotspotImpactBody"></div>
+      <div class="manual-event-actions">
+        <button class="secondary-action" id="hotspotImpactDismissButton" type="button">Close</button>
       </div>
     </section>
   </div>

@@ -5,6 +5,10 @@ const PANEL_WIDTH_KEY = "gridlock-operations-panel-width-v1";
 const PANEL_WIDTH_DEFAULT = 340;
 const PANEL_WIDTH_MIN = 320;
 const PANEL_WIDTH_MAX = 520;
+const EVENT_FEED_HEIGHT_KEY = "gridlock-event-feed-height-v1";
+const EVENT_FEED_HEIGHT_DEFAULT = 132;
+const EVENT_FEED_HEIGHT_MIN = 96;
+const EVENT_FEED_HEIGHT_MAX = 360;
 const LIVE_STATUS_POLL_MS = 60000;
 
 function delay(ms) {
@@ -164,6 +168,13 @@ const elements = {
   correctionPanelBody: document.getElementById("correctionPanelBody"),
   correctionCollapseButton: document.getElementById("correctionCollapseButton"),
   correctionCollapseAction: document.getElementById("correctionCollapseAction"),
+  hotspotImpactOverlay: document.getElementById("hotspotImpactOverlay"),
+  hotspotImpactTitle: document.getElementById("hotspotImpactTitle"),
+  hotspotImpactSubtitle: document.getElementById("hotspotImpactSubtitle"),
+  hotspotImpactBody: document.getElementById("hotspotImpactBody"),
+  hotspotImpactCloseButton: document.getElementById("hotspotImpactCloseButton"),
+  hotspotImpactDismissButton: document.getElementById("hotspotImpactDismissButton"),
+  eventFeedResizerHandle: document.getElementById("eventFeedResizerHandle"),
   panelResizerShell: document.querySelector(".panel-resizer-shell"),
   panelResizerHandle: document.getElementById("panelResizerHandle"),
   panelResizerToggle: document.getElementById("panelResizerToggle"),
@@ -171,6 +182,20 @@ const elements = {
 
 function clampPanelWidth(width) {
   return Math.min(PANEL_WIDTH_MAX, Math.max(PANEL_WIDTH_MIN, width));
+}
+
+function clampEventFeedHeight(height) {
+  return Math.min(EVENT_FEED_HEIGHT_MAX, Math.max(EVENT_FEED_HEIGHT_MIN, height));
+}
+
+function applyEventFeedHeight(height, persist = true) {
+  const nextHeight = clampEventFeedHeight(height);
+  if (elements.eventFeed) {
+    elements.eventFeed.style.maxHeight = `${nextHeight}px`;
+  }
+  if (persist) {
+    localStorage.setItem(EVENT_FEED_HEIGHT_KEY, String(nextHeight));
+  }
 }
 
 function applyPanelWidth(width, persist = true) {
@@ -199,6 +224,15 @@ function loadPanelWidthPreference() {
     return;
   }
   applyPanelWidth(PANEL_WIDTH_DEFAULT, false);
+}
+
+function loadEventFeedHeightPreference() {
+  const raw = Number(localStorage.getItem(EVENT_FEED_HEIGHT_KEY));
+  if (Number.isFinite(raw) && raw > 0) {
+    applyEventFeedHeight(raw, false);
+    return;
+  }
+  applyEventFeedHeight(EVENT_FEED_HEIGHT_DEFAULT, false);
 }
 
 function setupPanelResize() {
@@ -241,6 +275,33 @@ function setupPanelResize() {
     if (window.innerWidth <= 1180) {
       stopDragging();
     }
+  });
+}
+
+function setupEventFeedResize() {
+  loadEventFeedHeightPreference();
+  if (!elements.eventFeedResizerHandle || !elements.eventFeed) {
+    return;
+  }
+
+  let dragStartY = 0;
+  let dragStartHeight = EVENT_FEED_HEIGHT_DEFAULT;
+
+  const stopDragging = () => {
+    window.removeEventListener("pointermove", handlePointerMove);
+    window.removeEventListener("pointerup", stopDragging);
+  };
+
+  const handlePointerMove = (pointerEvent) => {
+    const delta = pointerEvent.clientY - dragStartY;
+    applyEventFeedHeight(dragStartHeight + delta);
+  };
+
+  elements.eventFeedResizerHandle.addEventListener("pointerdown", (pointerEvent) => {
+    dragStartY = pointerEvent.clientY;
+    dragStartHeight = elements.eventFeed.getBoundingClientRect().height;
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopDragging);
   });
 }
 
@@ -803,6 +864,103 @@ function closeManualEventModal() {
   elements.manualEventOverlay.hidden = true;
 }
 
+function openHotspotImpactModal() {
+  elements.hotspotImpactOverlay.hidden = false;
+}
+
+function closeHotspotImpactModal() {
+  elements.hotspotImpactOverlay.hidden = true;
+}
+
+function renderHotspotImpactLoading(event) {
+  elements.hotspotImpactTitle.textContent = event.title;
+  elements.hotspotImpactSubtitle.textContent = "Fetching road-level impact only for this hotspot to save live API usage.";
+  elements.hotspotImpactBody.innerHTML = `
+    <div class="hotspot-impact-card">
+      <strong>Loading on-demand impact detail</strong>
+      <p class="event-meta">Checking affected road stretches, spillover corridors, and the current advisory for this hotspot.</p>
+    </div>
+  `;
+  openHotspotImpactModal();
+}
+
+function renderHotspotImpactDetail(payload) {
+  const roads = payload.primary_affected_roads || [];
+  const diversions = payload.diversion_suggestions || [];
+  elements.hotspotImpactTitle.textContent = payload.title;
+  elements.hotspotImpactSubtitle.textContent = payload.lane_note;
+  elements.hotspotImpactBody.innerHTML = `
+    <div class="hotspot-impact-grid">
+      <div class="hotspot-impact-card">
+        <strong>Location</strong>
+        <p class="event-meta">${payload.location.corridor} - ${payload.location.zone}</p>
+        <p class="event-meta">${payload.location.junction}</p>
+      </div>
+      <div class="hotspot-impact-card">
+        <strong>Nearest Police Station</strong>
+        <p class="event-meta">${payload.nearest_police_station.station_name}</p>
+        <p class="event-meta">Impact ${payload.impact_score} - ${payload.risk_level}</p>
+      </div>
+      <div class="hotspot-impact-card">
+        <strong>Field Metrics</strong>
+        <p class="event-meta">Officers: ${payload.resource_plan.traffic_officers_required}</p>
+        <p class="event-meta">Marshals: ${payload.resource_plan.traffic_marshals_required}</p>
+        <p class="event-meta">Barricades: ${payload.resource_plan.barricades_required}</p>
+      </div>
+      <div class="hotspot-impact-card">
+        <strong>Advisory</strong>
+        <p class="event-meta">${payload.advisory}</p>
+      </div>
+    </div>
+    <div class="hotspot-impact-card">
+      <strong>Primary Affected Roads</strong>
+      <div class="hotspot-impact-list">
+        ${roads.map((road) => `
+          <div class="hotspot-impact-row">
+            <strong>${road.label}</strong>
+            <p class="event-meta">${road.severity}${road.approx_length_km ? ` - Approx ${road.approx_length_km} km` : ""}</p>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+    <div class="hotspot-impact-card">
+      <strong>Secondary Spillover Corridors</strong>
+      <div class="hotspot-impact-list">
+        ${diversions.length ? diversions.map((item) => `
+          <div class="hotspot-impact-row">
+            <strong>${item.corridor}</strong>
+            <p class="event-meta">Via ${item.via_junction} - Exposure ${item.estimated_exposure_score}</p>
+          </div>
+        `).join("") : '<div class="hotspot-impact-row"><strong>No spillover diversion suggested</strong><p class="event-meta">Direct corridor management is currently preferred.</p></div>'}
+      </div>
+    </div>
+  `;
+  openHotspotImpactModal();
+}
+
+async function openHotspotImpact(eventId) {
+  const event = state.dayData?.events?.find((item) => item.event_id === eventId);
+  if (!event) {
+    showToast("Hotspot detail is unavailable.");
+    return;
+  }
+  renderHotspotImpactLoading(event);
+  try {
+    const payload = await fetchJson(`/hotspots/${encodeURIComponent(eventId)}/impact-details`);
+    renderHotspotImpactDetail(payload);
+  } catch (error) {
+    elements.hotspotImpactTitle.textContent = event.title;
+    elements.hotspotImpactSubtitle.textContent = "Impact detail is unavailable for this hotspot.";
+    elements.hotspotImpactBody.innerHTML = `
+      <div class="hotspot-impact-card">
+        <strong>Unable to fetch more detail</strong>
+        <p class="event-meta">${error.message || "The backend could not build the hotspot road-impact view."}</p>
+      </div>
+    `;
+    openHotspotImpactModal();
+  }
+}
+
 function openManualEventModal() {
   const selectedDate = selectedOperationalDate();
   if (!selectedDate) {
@@ -1121,10 +1279,19 @@ function renderEventFeed(events) {
         <div class="event-meta">${event.time} - ${event.corridor} - ${event.police_station.station_name}</div>
         ${riskBadge(event.impact_score, event.risk_level)}
       </div>
+      <div class="event-item-actions">
+        <button class="secondary-action hotspot-more-button" data-impact-event-id="${event.event_id}" type="button">More Info</button>
+      </div>
     </button>
   `).join("");
   elements.eventFeed.querySelectorAll(".event-item").forEach((button) => {
     button.addEventListener("click", () => setSelectedEvent(button.dataset.eventId));
+  });
+  elements.eventFeed.querySelectorAll("[data-impact-event-id]").forEach((button) => {
+    button.addEventListener("click", (clickEvent) => {
+      clickEvent.stopPropagation();
+      openHotspotImpact(button.dataset.impactEventId);
+    });
   });
 }
 
@@ -1521,6 +1688,13 @@ function setupControls() {
       clearManualEventForm();
     }
   });
+  elements.hotspotImpactCloseButton.addEventListener("click", closeHotspotImpactModal);
+  elements.hotspotImpactDismissButton.addEventListener("click", closeHotspotImpactModal);
+  elements.hotspotImpactOverlay.addEventListener("click", (clickEvent) => {
+    if (clickEvent.target === elements.hotspotImpactOverlay) {
+      closeHotspotImpactModal();
+    }
+  });
   document.getElementById("routeForm").addEventListener("submit", submitRoute);
   document.getElementById("fitCityButton").addEventListener("click", () => {
     map.setView([12.9716, 77.5946], 11);
@@ -1596,6 +1770,7 @@ async function bootstrap() {
   await loadEngineCatalog();
   renderCorrectionArchive();
   setupPanelResize();
+  setupEventFeedResize();
   setupControls();
   populateManualEventCauseOptions();
   populateManualEventLocationHints();

@@ -279,6 +279,14 @@ def hotspots(limit: int = 10):
     return {"hotspots": ENGINE.get_top_hotspots(limit=limit)}
 
 
+@app.get("/hotspots/{event_id}/impact-details")
+def hotspot_impact_details(event_id: str):
+    try:
+        return ENGINE.get_hotspot_impact_details(event_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
 @app.get("/dashboard/calendar")
 def dashboard_calendar(window: int = Query(default=0, ge=0)):
     return ENGINE.get_calendar_window(window_index=window)

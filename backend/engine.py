@@ -2012,6 +2012,72 @@ class GridlockRecommendationEngine:
             "destination_event": destination_event,
         }
 
+    def get_hotspot_impact_details(self, event_id: str) -> Dict[str, Any]:
+        route_context = self.get_route_context(event_id)
+        if not route_context:
+            raise ValueError("Selected hotspot was not found.")
+        destination_event = route_context["destination_event"]
+        origin_station = route_context["origin_station"]
+        google_result = self.google_routes_client.compute_routes(
+            origin=(origin_station["latitude"], origin_station["longitude"]),
+            destination=(destination_event["latitude"], destination_event["longitude"]),
+            alternatives=2,
+            routing_preference="TRAFFIC_AWARE",
+        )
+
+        primary_affected_roads: List[Dict[str, Any]] = []
+        source = "historical_fallback"
+        unavailable_reason = None
+        if google_result.get("ok") and google_result.get("routes"):
+            source = "google_on_demand"
+            primary_affected_roads = self._route_interval_segments(google_result["routes"][0])
+            if not primary_affected_roads:
+                primary_affected_roads = [
+                    {
+                        "label": destination_event["corridor"],
+                        "severity": "Slow Movement",
+                        "corridor": destination_event["corridor"],
+                        "start_junction": destination_event["junction"],
+                        "end_junction": destination_event["junction"],
+                        "approx_length_km": None,
+                    }
+                ]
+        else:
+            unavailable_reason = google_result.get("error") or "google_unavailable"
+            primary_affected_roads = [
+                {
+                    "label": destination_event["corridor"],
+                    "severity": destination_event["risk_level"],
+                    "corridor": destination_event["corridor"],
+                    "start_junction": destination_event["junction"],
+                    "end_junction": destination_event["junction"],
+                    "approx_length_km": None,
+                }
+            ]
+
+        return {
+            "event_id": destination_event["event_id"],
+            "title": destination_event["title"],
+            "source": source,
+            "lane_level_available": False,
+            "lane_note": "Exact lane-level impact is not directly available from the current Google-backed setup; road-level impact is shown.",
+            "location": {
+                "address": destination_event["address"],
+                "corridor": destination_event["corridor"],
+                "junction": destination_event["junction"],
+                "zone": destination_event["zone"],
+            },
+            "nearest_police_station": origin_station,
+            "impact_score": destination_event["impact_score"],
+            "risk_level": destination_event["risk_level"],
+            "resource_plan": destination_event["resource_plan"],
+            "diversion_required": destination_event["diversion_required"],
+            "diversion_suggestions": destination_event["diversion_suggestions"],
+            "primary_affected_roads": primary_affected_roads,
+            "advisory": destination_event["alert"]["message"],
+            "google_unavailable_reason": unavailable_reason,
+        }
+
     def _nearest_node_ids(
         self, latitude: float, longitude: float, limit: int = 4
     ) -> List[Tuple[str, float]]:
@@ -2021,6 +2087,76 @@ class GridlockRecommendationEngine:
             ranked.append((distance_km, node["grid_id"]))
         ranked.sort(key=lambda item: item[0])
         return [(node_id, distance_km) for distance_km, node_id in ranked[:limit]]
+
+    def _nearest_graph_context(self, latitude: float, longitude: float) -> Dict[str, Any]:
+        nearest_node = None
+        nearest_distance = float("inf")
+        for node in self.analytics["graph_nodes"]:
+            distance_km = haversine_km((latitude, longitude), (node["latitude"], node["longitude"]))
+            if distance_km < nearest_distance:
+                nearest_distance = distance_km
+                nearest_node = node
+        if not nearest_node:
+            return {
+                "corridor": "Unknown",
+                "junction": "Unknown",
+                "zone": "Zone unavailable",
+                "distance_km": None,
+            }
+        return {
+            "corridor": nearest_node.get("corridor", "Unknown"),
+            "junction": nearest_node.get("junction", "Unknown"),
+            "zone": nearest_node.get("zone", "Zone unavailable"),
+            "distance_km": round(nearest_distance, 2),
+        }
+
+    def _route_interval_segments(self, route: Dict[str, Any]) -> List[Dict[str, Any]]:
+        path_points = route.get("path_points") or []
+        travel_advisory = route.get("travel_advisory") or {}
+        intervals = travel_advisory.get("speedReadingIntervals") or []
+        segments: List[Dict[str, Any]] = []
+        seen = set()
+        for interval in intervals:
+            severity = clean_text(interval.get("speed"), "NORMAL").upper()
+            if severity == "NORMAL":
+                continue
+            start_index = int(interval.get("startPolylinePointIndex", 0) or 0)
+            end_index = int(interval.get("endPolylinePointIndex", start_index + 1) or (start_index + 1))
+            if not path_points:
+                continue
+            start_index = max(0, min(start_index, len(path_points) - 1))
+            end_index = max(start_index, min(end_index, len(path_points) - 1))
+            start_point = path_points[start_index]
+            end_point = path_points[end_index]
+            start_context = self._nearest_graph_context(start_point["latitude"], start_point["longitude"])
+            end_context = self._nearest_graph_context(end_point["latitude"], end_point["longitude"])
+            start_junction = start_context["junction"]
+            end_junction = end_context["junction"]
+            corridor = start_context["corridor"]
+            if corridor != end_context["corridor"] and end_context["corridor"] != "Unknown":
+                corridor = f"{corridor} -> {end_context['corridor']}"
+            label = corridor
+            if start_junction != "Unknown" or end_junction != "Unknown":
+                label = f"{corridor} via {start_junction} -> {end_junction}"
+            key = (severity, label)
+            if key in seen:
+                continue
+            seen.add(key)
+            approx_length_km = haversine_km(
+                (start_point["latitude"], start_point["longitude"]),
+                (end_point["latitude"], end_point["longitude"]),
+            )
+            segments.append(
+                {
+                    "label": label,
+                    "severity": "Traffic Jam" if severity == "TRAFFIC_JAM" else "Slow Movement",
+                    "corridor": corridor,
+                    "start_junction": start_junction,
+                    "end_junction": end_junction,
+                    "approx_length_km": round(approx_length_km, 2),
+                }
+            )
+        return segments
 
     def _build_route_graph(
         self,

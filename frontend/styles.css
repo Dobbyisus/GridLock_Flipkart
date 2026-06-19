@@ -359,6 +359,11 @@ textarea {
   padding: 12px;
 }
 
+.hotspot-feed-card {
+  display: flex;
+  flex-direction: column;
+}
+
 .summary-grid,
 .dock-columns,
 .review-form-grid,
@@ -457,6 +462,26 @@ label {
 
 .event-feed {
   max-height: 132px;
+  min-height: 96px;
+}
+
+.feed-resizer-shell {
+  display: flex;
+  justify-content: center;
+  margin: 2px 0 8px;
+}
+
+.feed-resizer-handle {
+  width: 84px;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #d7e3fb 0%, #bdd0f1 100%);
+  cursor: ns-resize;
+  box-shadow: inset 0 0 0 1px rgba(30, 79, 175, 0.08);
+}
+
+.feed-resizer-handle:hover {
+  background: linear-gradient(180deg, #c8daf9 0%, #adc5ef 100%);
 }
 
 .route-results {
@@ -591,6 +616,19 @@ label {
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 12px;
+}
+
+.event-item-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.hotspot-more-button {
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: 9px;
+  font-size: 0.74rem;
 }
 
 .event-item.active {
@@ -1085,7 +1123,8 @@ textarea {
 }
 
 .manual-event-overlay,
-.correction-overlay {
+.correction-overlay,
+.hotspot-impact-overlay {
   position: fixed;
   inset: 0;
   z-index: 1300;
@@ -1108,12 +1147,14 @@ textarea {
 }
 
 .manual-event-overlay[hidden],
-.correction-overlay[hidden] {
+.correction-overlay[hidden],
+.hotspot-impact-overlay[hidden] {
   display: none !important;
 }
 
 .manual-event-modal,
-.correction-panel {
+.correction-panel,
+.hotspot-impact-modal {
   width: min(440px, calc(100vw - 36px));
   max-height: min(78vh, 680px);
   overflow: auto;
@@ -1127,6 +1168,10 @@ textarea {
 .manual-event-modal {
   width: min(560px, calc(100vw - 32px));
   pointer-events: auto;
+}
+
+.hotspot-impact-modal {
+  width: min(560px, calc(100vw - 32px));
 }
 
 .manual-event-head,
@@ -1163,6 +1208,49 @@ textarea {
   color: var(--text-soft);
   font-size: 0.86rem;
   line-height: 1.5;
+}
+
+.hotspot-impact-body {
+  display: grid;
+  gap: 12px;
+}
+
+.hotspot-impact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.hotspot-impact-card {
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f4;
+  background: linear-gradient(180deg, #fbfcff 0%, #f5f8ff 100%);
+}
+
+.hotspot-impact-card strong {
+  display: block;
+  color: var(--navy-900);
+  margin-bottom: 4px;
+}
+
+.hotspot-impact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hotspot-impact-row {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f4;
+  background: #fff;
+}
+
+.hotspot-impact-row strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--navy-900);
 }
 
 .manual-event-form {
