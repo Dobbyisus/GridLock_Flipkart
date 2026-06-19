@@ -2,6 +2,7 @@ import csv
 import json
 import math
 import re
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 from heapq import heappop, heappush
@@ -21,6 +22,11 @@ FEEDBACK_PATH = BASE_DIR / "event_feedback_log.json"
 MANUAL_EVENTS_PATH = BASE_DIR / "manual_events.json"
 
 BENGALURU_CENTER = (12.9716, 77.5946)
+INDIA_TZ = timezone(timedelta(hours=5, minutes=30))
+LIVE_REFRESH_INTERVAL_SECONDS = 3600
+LIVE_SNAPSHOT_LIMIT = 7
+LIVE_PROBE_LIMIT = 12
+LIVE_EVENT_LIMIT = 12
 
 ALERT_THRESHOLDS = {
     "critical": 82.0,
@@ -150,6 +156,8 @@ class GridlockRecommendationEngine:
         self.state_path = state_path
         self.feedback_path = feedback_path
         self.manual_events_path = MANUAL_EVENTS_PATH
+        self.session_started_at = datetime.now(timezone.utc)
+        self.session_id = f"session-{uuid.uuid4().hex[:12]}"
         self.events = self._load_events()
         self.manual_events = self._load_manual_events()
         self.analytics = self._build_analytics(self.events)
@@ -161,6 +169,11 @@ class GridlockRecommendationEngine:
         self.event_lookup = self._build_event_lookup()
         self.location_reference_points = self._build_location_reference_points()
         self.google_routes_client = GoogleRoutesClient(BASE_DIR.parent)
+        self.live_probe_nodes = self._build_live_probe_nodes(limit=LIVE_PROBE_LIMIT)
+        self.live_refresh_lock = threading.Lock()
+        self.live_refresh_stop = threading.Event()
+        self.live_refresh_thread: Optional[threading.Thread] = None
+        self.live_cache = self._empty_live_cache()
 
     def _load_events(self) -> List[Dict[str, Any]]:
         events: List[Dict[str, Any]] = []
@@ -382,13 +395,11 @@ class GridlockRecommendationEngine:
         merged.update(state)
         merged["weights"] = dict(DEFAULT_WEIGHTS) | dict(state.get("weights", {}))
         merged["cause_adjustments"] = dict(state.get("cause_adjustments", {}))
+        merged["last_retrained_at"] = self.session_started_at.isoformat()
+        merged["last_training_summary"] = {}
         return merged
 
     def _load_feedback_log(self) -> List[Dict[str, Any]]:
-        if self.feedback_path.exists():
-            with self.feedback_path.open("r", encoding="utf-8") as file_obj:
-                return json.load(file_obj)
-        self._save_json(self.feedback_path, [])
         return []
 
     def _parse_manual_event_datetime(self, value: Any) -> Optional[datetime]:
@@ -601,6 +612,521 @@ class GridlockRecommendationEngine:
             )
         return {"events_by_date": events_by_date, "sorted_dates": sorted_dates, "windows": windows}
 
+    def _build_live_probe_nodes(self, limit: int = LIVE_PROBE_LIMIT) -> List[Dict[str, Any]]:
+        ranked_nodes = sorted(
+            self.analytics["graph_nodes"],
+            key=lambda node: (
+                self.analytics["hotspot_scores"].get(node["grid_id"], 0.0),
+                node.get("count", 0),
+            ),
+            reverse=True,
+        )
+        return ranked_nodes[: max(1, limit)]
+
+    def _empty_live_cache(self) -> Dict[str, Any]:
+        return {
+            "last_refresh_at": None,
+            "next_refresh_at": None,
+            "cache_warm": False,
+            "stale": False,
+            "last_error": None,
+            "route_source": "historical_fallback",
+            "events": [],
+            "events_by_id": {},
+            "snapshots": [],
+        }
+
+    def start_live_monitor(self) -> None:
+        with self.live_refresh_lock:
+            if self.live_refresh_thread and self.live_refresh_thread.is_alive():
+                return
+            self.live_refresh_stop.clear()
+            self.refresh_live_cache()
+            self.live_refresh_thread = threading.Thread(
+                target=self._live_refresh_loop,
+                name="gridlock-live-refresh",
+                daemon=True,
+            )
+            self.live_refresh_thread.start()
+
+    def stop_live_monitor(self) -> None:
+        self.live_refresh_stop.set()
+        thread = self.live_refresh_thread
+        if thread and thread.is_alive():
+            thread.join(timeout=2.0)
+        self.live_refresh_thread = None
+
+    def _live_refresh_loop(self) -> None:
+        while not self.live_refresh_stop.wait(LIVE_REFRESH_INTERVAL_SECONDS):
+            self.refresh_live_cache()
+
+    def _historical_profile_for_coordinates(
+        self, latitude: float, longitude: float, reference_time: Optional[datetime] = None
+    ) -> Dict[str, Any]:
+        reference_hour = None
+        if reference_time is not None:
+            localized_reference = reference_time.astimezone(INDIA_TZ)
+            reference_hour = localized_reference.hour
+
+        ranked_candidates: List[Tuple[float, float, Dict[str, Any]]] = []
+        for event in self.events:
+            distance_km = haversine_km((latitude, longitude), (event["latitude"], event["longitude"]))
+            hour_penalty = 0.0
+            if reference_hour is not None and event.get("start_datetime"):
+                event_hour = event["start_datetime"].astimezone(INDIA_TZ).hour
+                circular_gap = min(abs(event_hour - reference_hour), 24 - abs(event_hour - reference_hour))
+                hour_penalty = circular_gap * 0.55
+            ranked_candidates.append((distance_km + hour_penalty, distance_km, event))
+
+        ranked_candidates.sort(key=lambda item: (item[0], item[1]))
+        ranked_events = [event for _, _, event in ranked_candidates[:18]]
+        if not ranked_events:
+            return {
+                "title": "Live congestion hotspot",
+                "address": "Bengaluru traffic corridor",
+                "event_cause": "others",
+                "priority": "High",
+                "event_type": "unplanned",
+                "requires_road_closure": False,
+                "corridor": "Unknown",
+                "junction": "Unknown",
+                "zone": "Zone unavailable",
+                "police_station": "Control",
+                "end_latitude": None,
+                "end_longitude": None,
+                "expected_attendance": None,
+            }
+
+        def pick_weighted_value(field: str, default: Any) -> Any:
+            weights: Dict[Any, float] = {}
+            for event in ranked_events:
+                distance = haversine_km((latitude, longitude), (event["latitude"], event["longitude"]))
+                hour_multiplier = 1.0
+                if reference_hour is not None and event.get("start_datetime"):
+                    event_hour = event["start_datetime"].astimezone(INDIA_TZ).hour
+                    circular_gap = min(abs(event_hour - reference_hour), 24 - abs(event_hour - reference_hour))
+                    hour_multiplier = max(0.25, 1.0 - (circular_gap * 0.12))
+                weight = hour_multiplier / max(distance + 0.2, 0.2)
+                value = event.get(field, default)
+                weights[value] = weights.get(value, 0.0) + weight
+            return max(weights.items(), key=lambda item: item[1])[0] if weights else default
+
+        closure_votes = sum(1 for event in ranked_events if event["requires_road_closure"])
+        corridor_name = clean_text(pick_weighted_value("corridor", "Unknown"), "Unknown")
+        junction_name = clean_text(pick_weighted_value("junction", "Unknown"), "Unknown")
+        zone_name = clean_text(pick_weighted_value("zone", "Zone unavailable"), "Zone unavailable")
+        live_title = corridor_name if corridor_name != "Unknown" else junction_name
+        if live_title in {"Unknown", ""}:
+            live_title = f"Live hotspot - {zone_name}" if zone_name != "Zone unavailable" else "Live congestion hotspot"
+        return {
+            "title": live_title,
+            "address": clean_text(junction_name if junction_name != "Unknown" else corridor_name, "Bengaluru traffic corridor"),
+            "event_cause": pick_weighted_value("event_cause", "others"),
+            "priority": pick_weighted_value("priority", "High"),
+            "event_type": pick_weighted_value("event_type", "unplanned"),
+            "requires_road_closure": closure_votes >= max(1, math.ceil(len(ranked_events) * 0.45)),
+            "corridor": corridor_name,
+            "junction": junction_name,
+            "zone": zone_name,
+            "police_station": pick_weighted_value("police_station", "Control"),
+            "end_latitude": None,
+            "end_longitude": None,
+            "expected_attendance": None,
+        }
+
+    def _traffic_interval_distribution(self, speed_reading_intervals: List[Dict[str, Any]]) -> Dict[str, float]:
+        totals = {"NORMAL": 0.0, "SLOW": 0.0, "TRAFFIC_JAM": 0.0}
+        covered = 0.0
+        for interval in speed_reading_intervals:
+            start_index = int(interval.get("startPolylinePointIndex", 0) or 0)
+            end_index = int(interval.get("endPolylinePointIndex", start_index + 1) or (start_index + 1))
+            span = max(1, end_index - start_index)
+            speed = clean_text(interval.get("speed"), "NORMAL").upper()
+            if speed not in totals:
+                speed = "NORMAL"
+            totals[speed] += span
+            covered += span
+        if covered <= 0:
+            return {"normal_share": 1.0, "slow_share": 0.0, "jam_share": 0.0}
+        return {
+            "normal_share": round(totals["NORMAL"] / covered, 4),
+            "slow_share": round(totals["SLOW"] / covered, 4),
+            "jam_share": round(totals["TRAFFIC_JAM"] / covered, 4),
+        }
+
+    def _live_scores_from_probe(
+        self,
+        *,
+        aware_duration_seconds: float,
+        baseline_duration_seconds: float,
+        interval_distribution: Dict[str, float],
+        historical_hotspot_score: float,
+        historical_corridor_score: float,
+        alternative_duration_seconds: List[float],
+    ) -> Dict[str, float]:
+        slowdown_ratio = (
+            aware_duration_seconds / baseline_duration_seconds
+            if baseline_duration_seconds > 0
+            else 1.0
+        )
+        jam_share = interval_distribution["jam_share"]
+        slow_share = interval_distribution["slow_share"]
+        volatility_ratio = 0.0
+        if alternative_duration_seconds:
+            min_duration = min(alternative_duration_seconds)
+            max_duration = max(alternative_duration_seconds)
+            if min_duration > 0:
+                volatility_ratio = (max_duration - min_duration) / min_duration
+
+        slowdown_score = clamp((slowdown_ratio - 1.0) * 90.0, 0.0, 100.0)
+        interval_score = clamp((jam_share * 100.0 * 0.7) + (slow_share * 100.0 * 0.3), 0.0, 100.0)
+        detour_score = clamp(volatility_ratio * 140.0, 0.0, 100.0)
+        live_traffic_score = clamp(
+            (interval_score * 0.48) + (slowdown_score * 0.34) + (detour_score * 0.18),
+            8.0,
+            100.0,
+        )
+        hotspot_score = clamp((live_traffic_score * 0.68) + (historical_hotspot_score * 0.32), 15.0, 100.0)
+        corridor_score = clamp((live_traffic_score * 0.58) + (historical_corridor_score * 0.42), 15.0, 100.0)
+        spread_score = clamp(
+            (jam_share * 100.0 * 0.48) + (slow_share * 100.0 * 0.24) + (detour_score * 0.28),
+            12.0,
+            100.0,
+        )
+        return {
+            "hotspot_score": round(hotspot_score, 2),
+            "corridor_score": round(corridor_score, 2),
+            "spread_score": round(spread_score, 2),
+            "live_traffic_score": round(live_traffic_score, 2),
+            "slowdown_ratio": round(slowdown_ratio, 3),
+            "jam_share": round(jam_share, 4),
+            "slow_share": round(slow_share, 4),
+            "detour_penalty_score": round(detour_score, 2),
+        }
+
+    def _build_live_event_from_probe(
+        self, probe: Dict[str, Any], refreshed_at: datetime
+    ) -> Optional[Dict[str, Any]]:
+        latitude = float(probe["latitude"])
+        longitude = float(probe["longitude"])
+        profile = self._historical_profile_for_coordinates(latitude, longitude, refreshed_at)
+        station = self._station_payload(profile["police_station"])
+        aware_result = self.google_routes_client.compute_routes(
+            origin=(station["latitude"], station["longitude"]),
+            destination=(latitude, longitude),
+            alternatives=3,
+            routing_preference="TRAFFIC_AWARE",
+        )
+        if not aware_result.get("ok") or not aware_result.get("routes"):
+            return None
+
+        baseline_result = self.google_routes_client.compute_routes(
+            origin=(station["latitude"], station["longitude"]),
+            destination=(latitude, longitude),
+            alternatives=1,
+            routing_preference="TRAFFIC_UNAWARE",
+        )
+        baseline_duration_seconds = 0.0
+        if baseline_result.get("ok") and baseline_result.get("routes"):
+            baseline_duration_seconds = float(
+                baseline_result["routes"][0].get("duration_seconds") or 0.0
+            )
+        primary_route = aware_result["routes"][0]
+        interval_distribution = self._traffic_interval_distribution(
+            ((primary_route.get("travel_advisory") or {}).get("speedReadingIntervals") or [])
+        )
+        scores = self._live_scores_from_probe(
+            aware_duration_seconds=float(primary_route.get("duration_seconds") or 0.0),
+            baseline_duration_seconds=baseline_duration_seconds,
+            interval_distribution=interval_distribution,
+            historical_hotspot_score=self._nearest_grid_score(latitude, longitude),
+            historical_corridor_score=self._corridor_score(latitude, longitude)[0],
+            alternative_duration_seconds=[
+                float(route.get("duration_seconds") or 0.0)
+                for route in aware_result["routes"]
+                if route.get("duration_seconds")
+            ],
+        )
+        event_id = f"LIVE_{probe['grid_id'].replace('.', '').replace('_', '')}"
+        return {
+            "id": event_id,
+            "address": profile["address"],
+            "description": profile["title"],
+            "latitude": round(latitude, 6),
+            "longitude": round(longitude, 6),
+            "end_latitude": profile["end_latitude"],
+            "end_longitude": profile["end_longitude"],
+            "event_cause": clean_text(profile["event_cause"], "others").lower(),
+            "priority": clean_text(profile["priority"], "High").title(),
+            "requires_road_closure": bool(profile["requires_road_closure"]),
+            "event_type": clean_text(profile["event_type"], "unplanned").lower(),
+            "status": "active",
+            "corridor": clean_text(profile["corridor"]),
+            "junction": clean_text(profile["junction"]),
+            "zone": clean_text(profile["zone"]),
+            "police_station": clean_text(profile["police_station"], "Control"),
+            "grid_id": probe["grid_id"],
+            "start_datetime": refreshed_at,
+            "duration_hours": None,
+            "path_distance_km": 0.0,
+            "expected_attendance": profile["expected_attendance"],
+            "event_source": "live",
+            "live_scoring_inputs": scores,
+            "live_probe_summary": {
+                "route_source": "google_live_probe",
+                "aware_duration_seconds": round(float(primary_route.get("duration_seconds") or 0.0), 2),
+                "baseline_duration_seconds": round(float(baseline_duration_seconds or 0.0), 2),
+                "google_distance_km": round(float(primary_route.get("distance_meters") or 0.0) / 1000.0, 2),
+                "interval_distribution": interval_distribution,
+            },
+        }
+
+    def _build_fallback_live_events(self, refreshed_at: datetime) -> List[Dict[str, Any]]:
+        fallback_events: List[Dict[str, Any]] = []
+        for probe in self.live_probe_nodes[:LIVE_EVENT_LIMIT]:
+            profile = self._historical_profile_for_coordinates(
+                probe["latitude"], probe["longitude"], refreshed_at
+            )
+            fallback_events.append(
+                {
+                    "id": f"LIVE_FALLBACK_{probe['grid_id'].replace('.', '').replace('_', '')}",
+                    "address": profile["address"],
+                    "description": profile["title"],
+                    "latitude": round(float(probe["latitude"]), 6),
+                    "longitude": round(float(probe["longitude"]), 6),
+                    "end_latitude": None,
+                    "end_longitude": None,
+                    "event_cause": clean_text(profile["event_cause"], "others").lower(),
+                    "priority": clean_text(profile["priority"], "High").title(),
+                    "requires_road_closure": bool(profile["requires_road_closure"]),
+                    "event_type": clean_text(profile["event_type"], "unplanned").lower(),
+                    "status": "active",
+                    "corridor": clean_text(profile["corridor"]),
+                    "junction": clean_text(profile["junction"]),
+                    "zone": clean_text(profile["zone"]),
+                    "police_station": clean_text(profile["police_station"], "Control"),
+                    "grid_id": probe["grid_id"],
+                    "start_datetime": refreshed_at,
+                    "duration_hours": None,
+                    "path_distance_km": 0.0,
+                    "expected_attendance": None,
+                    "event_source": "live",
+                    "live_scoring_inputs": {
+                        "hotspot_score": round(self._nearest_grid_score(probe["latitude"], probe["longitude"]), 2),
+                        "corridor_score": round(self._corridor_score(probe["latitude"], probe["longitude"])[0], 2),
+                        "spread_score": 34.0,
+                        "live_traffic_score": round(self.analytics["hotspot_scores"].get(probe["grid_id"], 42.0), 2),
+                        "slowdown_ratio": 1.0,
+                        "jam_share": 0.0,
+                        "slow_share": 0.0,
+                        "detour_penalty_score": 0.0,
+                    },
+                    "live_probe_summary": {
+                        "route_source": "historical_fallback",
+                        "aware_duration_seconds": 0.0,
+                        "baseline_duration_seconds": 0.0,
+                        "google_distance_km": 0.0,
+                        "interval_distribution": {
+                            "normal_share": 1.0,
+                            "slow_share": 0.0,
+                            "jam_share": 0.0,
+                        },
+                    },
+                }
+            )
+        return fallback_events
+
+    def refresh_live_cache(self) -> Dict[str, Any]:
+        refreshed_at = datetime.now(timezone.utc)
+        live_events: List[Dict[str, Any]] = []
+        errors: List[str] = []
+        for probe in self.live_probe_nodes:
+            try:
+                live_event = self._build_live_event_from_probe(probe, refreshed_at)
+            except Exception as error:
+                live_event = None
+                errors.append(str(error))
+            if live_event:
+                live_events.append(live_event)
+
+        route_source = "google_live_probe"
+        cache_warm = bool(live_events)
+        stale = False
+        last_error = None
+        if not live_events:
+            if self.live_cache["cache_warm"] and self.live_cache["events"]:
+                live_events = list(self.live_cache["events"])
+                stale = True
+                route_source = self.live_cache.get("route_source", "google_live_probe")
+                last_error = errors[0] if errors else "Live refresh failed; serving the last warm cache."
+                cache_warm = True
+            else:
+                live_events = self._build_fallback_live_events(refreshed_at)
+                route_source = "historical_fallback"
+                last_error = errors[0] if errors else "Google live traffic is unavailable; serving historical fallback hotspots."
+                cache_warm = bool(live_events)
+
+        live_events.sort(
+            key=lambda event: (
+                event.get("live_scoring_inputs", {}).get("live_traffic_score", 0.0),
+                self.analytics["hotspot_scores"].get(event["grid_id"], 0.0),
+            ),
+            reverse=True,
+        )
+        top_events = live_events[:LIVE_EVENT_LIMIT]
+        events_by_id = {event["id"]: event for event in top_events}
+
+        existing_snapshots = list(self.live_cache.get("snapshots", []))
+        snapshot_key = refreshed_at.strftime("%Y-%m-%dT%H:00:00Z")
+        snapshot_summary = self._build_live_snapshot_summary(snapshot_key, refreshed_at, top_events)
+        snapshots = [item for item in existing_snapshots if item["date"] != snapshot_key]
+        snapshots.append(snapshot_summary)
+        snapshots.sort(key=lambda item: item["captured_at"])
+        snapshots = snapshots[-LIVE_SNAPSHOT_LIMIT:]
+
+        self.prediction_cache = {
+            event_id: prediction
+            for event_id, prediction in self.prediction_cache.items()
+            if not str(event_id).startswith("LIVE_")
+        }
+        self.live_cache = {
+            "last_refresh_at": refreshed_at.isoformat(),
+            "next_refresh_at": (refreshed_at + timedelta(seconds=LIVE_REFRESH_INTERVAL_SECONDS)).isoformat(),
+            "cache_warm": cache_warm,
+            "stale": stale,
+            "last_error": last_error,
+            "route_source": route_source,
+            "events": top_events,
+            "events_by_id": events_by_id,
+            "snapshots": snapshots,
+        }
+        return self.live_cache
+
+    def _build_live_snapshot_summary(
+        self, snapshot_key: str, refreshed_at: datetime, events: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        predicted_events = [self._event_dashboard_payload(event) for event in events]
+        max_score = max((event["impact_score"] for event in predicted_events), default=0.0)
+        critical_count = sum(1 for event in predicted_events if event["risk_level"] == "Critical")
+        return {
+            "date": snapshot_key,
+            "captured_at": refreshed_at.isoformat(),
+            "slot_label": refreshed_at.astimezone(INDIA_TZ).strftime("%H:%M"),
+            "slot_hour": refreshed_at.astimezone(INDIA_TZ).strftime("%H"),
+            "event_count": len(predicted_events),
+            "critical_count": critical_count,
+            "max_impact_score": round(max_score, 2),
+            "color": self._score_color(max_score),
+        }
+
+    def get_live_status(self) -> Dict[str, Any]:
+        return {
+            "mode": "live",
+            "available": True,
+            "google_routes_configured": self.google_routes_client.is_configured(),
+            "last_refresh_at": self.live_cache["last_refresh_at"],
+            "next_refresh_at": self.live_cache["next_refresh_at"],
+            "cache_warm": self.live_cache["cache_warm"],
+            "stale": self.live_cache["stale"],
+            "last_error": self.live_cache["last_error"],
+            "route_source": self.live_cache["route_source"],
+            "session_started_at": self.session_started_at.isoformat(),
+            "session_id": self.session_id,
+        }
+
+    def _live_snapshot_dates(self) -> List[Dict[str, Any]]:
+        snapshots = list(self.live_cache.get("snapshots", []))
+        snapshots.sort(key=lambda item: item["captured_at"])
+        return snapshots
+
+    def get_live_calendar_window(self, window_index: int = 0) -> Dict[str, Any]:
+        snapshots = self._live_snapshot_dates()
+        today_text = datetime.now(INDIA_TZ).date().isoformat()
+        label = f"Live today - {datetime.now(INDIA_TZ).strftime('%d %b %Y')}"
+        return {
+            "window_index": 0,
+            "total_windows": 1,
+            "start_date": today_text,
+            "end_date": today_text,
+            "label": label,
+            "dates": snapshots,
+        }
+
+    def list_live_calendar_windows(self) -> Dict[str, Any]:
+        today_text = datetime.now(INDIA_TZ).date().isoformat()
+        label = f"Live today - {datetime.now(INDIA_TZ).strftime('%d %b %Y')}"
+        return {
+            "total_windows": 1,
+            "windows": [
+                {
+                    "window_index": 0,
+                    "start_date": today_text,
+                    "end_date": today_text,
+                    "label": label,
+                }
+            ],
+        }
+
+    def _live_events_for_snapshot(self, snapshot_key: Optional[str] = None) -> List[Dict[str, Any]]:
+        live_events = list(self.live_cache.get("events", []))
+        if not snapshot_key:
+            return live_events
+        snapshot_date = snapshot_key.split("T", 1)[0]
+        manual_today = [
+            event
+            for event in self.manual_events
+            if event["start_datetime"] and event["start_datetime"].date().isoformat() == snapshot_date
+        ]
+        return live_events + manual_today
+
+    def get_live_day_dashboard(self, snapshot_key: str) -> Dict[str, Any]:
+        events = self._live_events_for_snapshot(snapshot_key)
+        dashboard_events = [self._event_dashboard_payload(event) for event in events]
+        dashboard_events.sort(key=lambda item: item["impact_score"], reverse=True)
+        police_markers = []
+        seen_stations = set()
+        for event in dashboard_events:
+            station_name = event["police_station"]["station_name"]
+            if station_name in seen_stations:
+                continue
+            seen_stations.add(station_name)
+            police_markers.append(event["police_station"])
+        snapshot_meta = next(
+            (item for item in self._live_snapshot_dates() if item["date"] == snapshot_key),
+            None,
+        )
+        summary_date = snapshot_meta["captured_at"] if snapshot_meta else datetime.now(timezone.utc).isoformat()
+        summary = {
+            "date": summary_date,
+            "event_count": len(dashboard_events),
+            "critical_count": sum(1 for event in dashboard_events if event["risk_level"] == "Critical"),
+            "high_or_above": sum(1 for event in dashboard_events if event["impact_score"] >= 64.0),
+            "average_impact_score": round(
+                sum(event["impact_score"] for event in dashboard_events) / len(dashboard_events),
+                2,
+            )
+            if dashboard_events
+            else 0.0,
+            "slot_label": snapshot_meta["slot_label"] if snapshot_meta else datetime.now(INDIA_TZ).strftime("%H:%M"),
+            "mode": "live",
+        }
+        return {
+            "summary": summary,
+            "events": dashboard_events,
+            "police_markers": police_markers,
+        }
+
+    def get_live_review_window(self, window_index: int = 0) -> Dict[str, Any]:
+        calendar = self.get_live_calendar_window(window_index)
+        return {
+            "window_index": calendar["window_index"],
+            "start_date": calendar["start_date"],
+            "end_date": calendar["end_date"],
+            "placeholder": True,
+            "events": [],
+            "message": "Weekly review remains available in historical mode only for this phase.",
+        }
+
     def _save_json(self, path: Path, payload: Any) -> None:
         with path.open("w", encoding="utf-8") as file_obj:
             json.dump(payload, file_obj, indent=2)
@@ -628,18 +1154,34 @@ class GridlockRecommendationEngine:
         cached = self.prediction_cache.get(event["id"])
         if cached:
             return cached
-        prediction = self.predict(
-            event_cause=event["event_cause"],
-            priority=event["priority"],
-            requires_road_closure=event["requires_road_closure"],
-            latitude=event["latitude"],
-            longitude=event["longitude"],
-            event_type=event["event_type"],
-            start_datetime=event["start_datetime"],
-            end_latitude=event["end_latitude"],
-            end_longitude=event["end_longitude"],
-            expected_attendance=event.get("expected_attendance"),
-        )
+        live_scoring_inputs = event.get("live_scoring_inputs")
+        if live_scoring_inputs:
+            prediction = self._predict_with_component_scores(
+                event_cause=event["event_cause"],
+                priority=event["priority"],
+                requires_road_closure=event["requires_road_closure"],
+                latitude=event["latitude"],
+                longitude=event["longitude"],
+                event_type=event["event_type"],
+                start_datetime=event["start_datetime"],
+                end_latitude=event["end_latitude"],
+                end_longitude=event["end_longitude"],
+                expected_attendance=event.get("expected_attendance"),
+                score_overrides=live_scoring_inputs,
+            )
+        else:
+            prediction = self.predict(
+                event_cause=event["event_cause"],
+                priority=event["priority"],
+                requires_road_closure=event["requires_road_closure"],
+                latitude=event["latitude"],
+                longitude=event["longitude"],
+                event_type=event["event_type"],
+                start_datetime=event["start_datetime"],
+                end_latitude=event["end_latitude"],
+                end_longitude=event["end_longitude"],
+                expected_attendance=event.get("expected_attendance"),
+            )
         self.prediction_cache[event["id"]] = prediction
         return prediction
 
@@ -655,7 +1197,7 @@ class GridlockRecommendationEngine:
         )
 
     def _event_record(self, event_id: str) -> Optional[Dict[str, Any]]:
-        return self.event_lookup.get(event_id)
+        return self.live_cache.get("events_by_id", {}).get(event_id) or self.event_lookup.get(event_id)
 
     def _event_dashboard_payload(self, event: Dict[str, Any]) -> Dict[str, Any]:
         prediction = self._predict_event_record(event)
@@ -689,6 +1231,7 @@ class GridlockRecommendationEngine:
             "alert": prediction["alert"],
             "breakdown": prediction["breakdown"],
             "event_source": event.get("event_source", "historical"),
+            "live_probe_summary": event.get("live_probe_summary"),
         }
 
     def get_catalog(self) -> Dict[str, Any]:
@@ -709,6 +1252,9 @@ class GridlockRecommendationEngine:
             "historical_events_loaded": self.analytics["event_count"],
             "feedback_records": len(self.feedback_log),
             "last_retrained_at": self.state["last_retrained_at"],
+            "session_id": self.session_id,
+            "session_started_at": self.session_started_at.isoformat(),
+            "live_status": self.get_live_status(),
             "top_hotspots": self.get_top_hotspots(limit=5),
         }
 
@@ -1194,6 +1740,36 @@ class GridlockRecommendationEngine:
         end_latitude: Optional[float] = None,
         end_longitude: Optional[float] = None,
         expected_attendance: Optional[int] = None,
+        score_overrides: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, Any]:
+        return self._predict_with_component_scores(
+            event_cause=event_cause,
+            priority=priority,
+            requires_road_closure=requires_road_closure,
+            latitude=latitude,
+            longitude=longitude,
+            event_type=event_type,
+            start_datetime=start_datetime,
+            end_latitude=end_latitude,
+            end_longitude=end_longitude,
+            expected_attendance=expected_attendance,
+            score_overrides=score_overrides,
+        )
+
+    def _predict_with_component_scores(
+        self,
+        *,
+        event_cause: str,
+        priority: str,
+        requires_road_closure: bool,
+        latitude: float,
+        longitude: float,
+        event_type: str = "unplanned",
+        start_datetime: Optional[datetime] = None,
+        end_latitude: Optional[float] = None,
+        end_longitude: Optional[float] = None,
+        expected_attendance: Optional[int] = None,
+        score_overrides: Optional[Dict[str, float]] = None,
     ) -> Dict[str, Any]:
         cause_key = clean_text(event_cause, "others").lower()
         priority_key = clean_text(priority, "Low").title()
@@ -1209,6 +1785,11 @@ class GridlockRecommendationEngine:
         temporal_score = self._temporal_score(start_datetime)
         spread_score = self._spread_score(latitude, longitude, end_latitude, end_longitude)
         type_score = self.analytics["event_type_scores"].get(event_type_key, 46.0)
+        if score_overrides:
+            hotspot_score = float(score_overrides.get("hotspot_score", hotspot_score))
+            corridor_score = float(score_overrides.get("corridor_score", corridor_score))
+            spread_score = float(score_overrides.get("spread_score", spread_score))
+            temporal_score = float(score_overrides.get("temporal_score", temporal_score))
 
         weights = self.state["weights"]
         impact_score = (
@@ -1258,6 +1839,10 @@ class GridlockRecommendationEngine:
                 "temporal_score": round(temporal_score, 2),
                 "spread_score": round(spread_score, 2),
                 "event_type_score": round(type_score, 2),
+                "live_traffic_score": round(float((score_overrides or {}).get("live_traffic_score", 0.0)), 2),
+                "slowdown_ratio": round(float((score_overrides or {}).get("slowdown_ratio", 0.0)), 3),
+                "jam_share": round(float((score_overrides or {}).get("jam_share", 0.0)), 4),
+                "slow_share": round(float((score_overrides or {}).get("slow_share", 0.0)), 4),
                 "weights": weights,
                 "bias": self.state["bias"],
             },
@@ -1710,6 +2295,7 @@ class GridlockRecommendationEngine:
             "feedback_id": str(uuid.uuid4()),
             "event_reference_id": event_payload.get("event_reference_id") or str(uuid.uuid4()),
             "logged_at": datetime.now(timezone.utc).isoformat(),
+            "session_id": self.session_id,
             "source": source,
             "notes": notes or "",
             "event_payload": event_payload,
@@ -1719,7 +2305,6 @@ class GridlockRecommendationEngine:
             "breakdown": prediction["breakdown"],
         }
         self.feedback_log.append(entry)
-        self._save_json(self.feedback_path, self.feedback_log)
         learning_update = self.retrain_if_due()
         return {
             "feedback_logged": True,
@@ -1736,6 +2321,8 @@ class GridlockRecommendationEngine:
             "retrain_window_days": self.state["retrain_window_days"],
             "feedback_records": len(self.feedback_log),
             "last_training_summary": self.state.get("last_training_summary", {}),
+            "session_id": self.session_id,
+            "session_started_at": self.session_started_at.isoformat(),
         }
 
     def retrain_if_due(self) -> Dict[str, Any]:
@@ -1801,7 +2388,6 @@ class GridlockRecommendationEngine:
             "mean_absolute_error": round(sum(abs(error) for error in errors) / len(errors), 2),
             "bias_shift": round(bias_shift, 4),
         }
-        self._save_json(self.state_path, self.state)
         return {
             "retrained": True,
             "state": self.get_learning_state(),

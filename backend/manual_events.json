@@ -1,1 +1,25 @@
-[]
+[
+  {
+    "id": "MANUAL_7D4ABCCB10",
+    "address": "Old Madras Road, New Binnamangla, Indiranagar, Bengaluru, Karnataka. Pin-560038 (India)",
+    "description": "hvihadca",
+    "latitude": 12.984113,
+    "longitude": 77.641029,
+    "end_latitude": null,
+    "end_longitude": null,
+    "event_cause": "vehicle_breakdown",
+    "priority": "Low",
+    "requires_road_closure": true,
+    "event_type": "planned",
+    "status": "scheduled",
+    "corridor": "Old Madras Road",
+    "junction": "Old Madras Road",
+    "zone": "Central Zone 1",
+    "police_station": "Jeevanbheemanagar",
+    "grid_id": "12.98_77.64",
+    "start_datetime": "2023-11-09T18:00:00+05:30",
+    "duration_hours": null,
+    "path_distance_km": 0.0,
+    "expected_attendance": null
+  }
+]

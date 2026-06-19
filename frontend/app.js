@@ -1,9 +1,11 @@
 const CORRECTION_HISTORY_KEY = "gridlock-weekly-corrections-v1";
+const CORRECTION_SESSION_KEY = "gridlock-weekly-corrections-session-v1";
 const MIN_CORRECTION_PANEL_MS = 1200;
 const PANEL_WIDTH_KEY = "gridlock-operations-panel-width-v1";
 const PANEL_WIDTH_DEFAULT = 340;
 const PANEL_WIDTH_MIN = 320;
 const PANEL_WIDTH_MAX = 520;
+const LIVE_STATUS_POLL_MS = 60000;
 
 function delay(ms) {
   return new Promise((resolve) => {
@@ -26,7 +28,39 @@ function loadCorrectionHistory() {
   }
 }
 
+function loadStoredCorrectionSessionId() {
+  return localStorage.getItem(CORRECTION_SESSION_KEY) || null;
+}
+
+function persistCorrectionSessionId(sessionId) {
+  if (sessionId) {
+    localStorage.setItem(CORRECTION_SESSION_KEY, sessionId);
+  }
+}
+
+function clearCorrectionHistoryStore() {
+  state.correctionHistory = [];
+  state.activeCorrectionKey = null;
+  localStorage.removeItem(CORRECTION_HISTORY_KEY);
+}
+
+function isLiveMode() {
+  return state.mode === "live";
+}
+
+function dashboardBasePath() {
+  return isLiveMode() ? "/dashboard/live" : "/dashboard";
+}
+
+function selectedOperationalDate() {
+  if (!state.selectedDate) {
+    return null;
+  }
+  return isLiveMode() ? String(state.selectedDate).slice(0, 10) : state.selectedDate;
+}
+
 const state = {
+  mode: "historical",
   engineCatalog: null,
   windowIndex: 0,
   totalWindows: 0,
@@ -44,6 +78,11 @@ const state = {
   activeCorrectionKey: null,
   selectedRouteId: null,
   activeRouteAnimation: null,
+  sessionId: null,
+  sessionStartedAt: null,
+  liveStatus: null,
+  liveRefreshSeenAt: null,
+  livePollingHandle: null,
 };
 
 const map = L.map("map", {
@@ -66,6 +105,8 @@ const elements = {
   appShell: document.querySelector(".app-shell"),
   dashboardLayout: document.querySelector(".dashboard-layout"),
   intelPanel: document.querySelector(".intel-panel"),
+  goLiveButton: document.getElementById("goLiveButton"),
+  liveStatusPill: document.getElementById("liveStatusPill"),
   bannerTitle: document.getElementById("bannerTitle"),
   bannerText: document.getElementById("bannerText"),
   selectedDateLabel: document.getElementById("selectedDateLabel"),
@@ -213,7 +254,9 @@ function showToast(message) {
 }
 
 function formatDate(dateText) {
-  return new Date(`${dateText}T00:00:00`).toLocaleDateString("en-IN", {
+  const normalized = String(dateText || "");
+  const source = normalized.includes("T") ? normalized : `${normalized}T00:00:00`;
+  return new Date(source).toLocaleDateString("en-IN", {
     weekday: "short",
     day: "numeric",
     month: "short",
@@ -244,7 +287,8 @@ function formatDateTime(dateText) {
 }
 
 function timelineParts(dateText) {
-  const date = new Date(`${dateText}T00:00:00`);
+  const source = String(dateText || "");
+  const date = new Date(source.includes("T") ? source : `${source}T00:00:00`);
   return {
     month: date.toLocaleDateString("en-IN", { month: "short" }).toUpperCase(),
     day: date.toLocaleDateString("en-IN", { day: "2-digit" }),
@@ -286,6 +330,9 @@ function formatSigned(value, digits = 2) {
 function persistCorrectionHistory() {
   try {
     localStorage.setItem(CORRECTION_HISTORY_KEY, JSON.stringify(state.correctionHistory));
+    if (state.sessionId) {
+      persistCorrectionSessionId(state.sessionId);
+    }
   } catch (error) {
     showToast("Correction summary could not be stored locally.");
   }
@@ -634,6 +681,101 @@ async function loadEngineCatalog() {
   }
 }
 
+async function loadLearningState() {
+  try {
+    const learningState = await fetchJson("/learning/state");
+    state.sessionId = learningState.session_id || null;
+    state.sessionStartedAt = learningState.session_started_at || null;
+    const storedSessionId = loadStoredCorrectionSessionId();
+    if (storedSessionId && state.sessionId && storedSessionId !== state.sessionId) {
+      clearCorrectionHistoryStore();
+    }
+    if (state.sessionId) {
+      persistCorrectionSessionId(state.sessionId);
+    }
+  } catch (error) {
+    state.sessionId = null;
+    state.sessionStartedAt = null;
+  }
+}
+
+async function loadLiveStatus() {
+  const data = await fetchJson("/dashboard/live/status");
+  state.liveStatus = data;
+  if (data.session_id) {
+    state.sessionId = data.session_id;
+  }
+  if (data.session_started_at) {
+    state.sessionStartedAt = data.session_started_at;
+  }
+  return data;
+}
+
+function applyModeUi() {
+  const isLive = isLiveMode();
+  elements.goLiveButton.textContent = isLive ? "Back To History" : "Go Live";
+  elements.goLiveButton.classList.toggle("is-live", isLive);
+  elements.liveStatusPill.textContent = isLive
+    ? (state.liveStatus?.stale ? "Live Mode (Stale Cache)" : "Live Mode")
+    : "Historical Mode";
+  elements.reviewTabButton.classList.toggle("locked", !isLive && !state.reviewUnlocked);
+  elements.forceRetrainButton.disabled = isLive || state.correctionRunning;
+  elements.forceRetrainButton.textContent = isLive ? "Historical Mode Only" : "Run Weekly Correction";
+  elements.weekSelect.disabled = isLive;
+  document.getElementById("previousWindowButton").disabled = isLive || state.windowIndex === 0;
+  document.getElementById("nextWindowButton").disabled = isLive || state.windowIndex >= state.totalWindows - 1;
+}
+
+async function toggleDashboardMode() {
+  state.mode = isLiveMode() ? "historical" : "live";
+  state.viewedDates = new Set();
+  state.reviewUnlocked = false;
+  state.selectedEvent = null;
+  state.selectedRouteId = null;
+  clearRouteVisualization();
+  document.querySelectorAll(".tab-button").forEach((item) => {
+    item.classList.toggle("active", item.dataset.tab === "operations");
+  });
+  document.querySelectorAll(".tab-panel").forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.panel === "operations");
+  });
+  try {
+    if (isLiveMode()) {
+      await loadLiveStatus();
+    }
+    await loadCalendarWindowsList();
+    await loadCalendarWindow(0);
+    applyModeUi();
+    manageLivePolling();
+  } catch (error) {
+    elements.bannerTitle.textContent = "Dashboard mode could not load.";
+    elements.bannerText.textContent = error.message || "Check the backend service and refresh the page.";
+  }
+}
+
+function manageLivePolling() {
+  if (state.livePollingHandle) {
+    clearInterval(state.livePollingHandle);
+    state.livePollingHandle = null;
+  }
+  if (!isLiveMode()) {
+    return;
+  }
+  state.livePollingHandle = setInterval(async () => {
+    try {
+      const liveStatus = await loadLiveStatus();
+      applyModeUi();
+      const refreshAt = liveStatus.last_refresh_at || "";
+      if (refreshAt && refreshAt !== state.liveRefreshSeenAt) {
+        state.liveRefreshSeenAt = refreshAt;
+        await loadCalendarWindow(0);
+      }
+    } catch (error) {
+      // Keep the current live snapshot rendered until polling recovers.
+    }
+  }, LIVE_STATUS_POLL_MS);
+}
+
 function formatCauseLabel(value) {
   return String(value || "others")
     .split("_")
@@ -662,14 +804,15 @@ function closeManualEventModal() {
 }
 
 function openManualEventModal() {
-  if (!state.selectedDate) {
+  const selectedDate = selectedOperationalDate();
+  if (!selectedDate) {
     showToast("Select a dashboard date before adding an event.");
     return;
   }
   clearManualEventForm();
   populateManualEventCauseOptions();
   populateManualEventLocationHints();
-  elements.manualEventDateLabel.value = formatDate(state.selectedDate);
+  elements.manualEventDateLabel.value = formatDate(selectedDate);
   elements.manualEventTime.value = "18:00";
   elements.manualEventOverlay.hidden = false;
 }
@@ -682,13 +825,14 @@ function clearManualEventForm() {
 
 async function submitManualEvent(formEvent) {
   formEvent.preventDefault();
-  if (!state.selectedDate) {
+  const selectedDate = selectedOperationalDate();
+  if (!selectedDate) {
     showToast("Select a dashboard date before saving an event.");
     return;
   }
   const formData = new FormData(elements.manualEventForm);
   const payload = {
-    date: state.selectedDate,
+    date: selectedDate,
     time: formData.get("time"),
     title: formData.get("title"),
     address: formData.get("address"),
@@ -712,7 +856,7 @@ async function submitManualEvent(formEvent) {
     clearManualEventForm();
     await loadDay(state.selectedDate, data.event.event_id);
     await loadReviewWindow();
-    showToast("Manual event added to the selected date.");
+    showToast(isLiveMode() ? "Manual event added to today’s live watch." : "Manual event added to the selected date.");
   } catch (error) {
     showToast(error.message || "Unable to save the manual event.");
   } finally {
@@ -813,7 +957,7 @@ function animateRouteSelection(route) {
 }
 
 async function loadCalendarWindow(windowIndex = 0) {
-  const data = await fetchJson(`/dashboard/calendar?window=${windowIndex}`);
+  const data = await fetchJson(`${dashboardBasePath()}/calendar?window=${windowIndex}`);
   state.windowIndex = data.window_index;
   state.totalWindows = data.total_windows;
   state.calendarDates = data.dates;
@@ -823,14 +967,20 @@ async function loadCalendarWindow(windowIndex = 0) {
     endDate: data.end_date,
     label: data.label || formatWeekRange(data.start_date, data.end_date),
   };
+  if (isLiveMode()) {
+    state.liveRefreshSeenAt = state.liveStatus?.last_refresh_at || state.liveRefreshSeenAt;
+  }
   elements.weekSelect.dataset.label = state.currentWindow.label;
-  elements.windowLabel.textContent = `Window ${data.window_index + 1} / ${data.total_windows}`;
+  elements.windowLabel.textContent = isLiveMode()
+    ? "Today live feed"
+    : `Window ${data.window_index + 1} / ${data.total_windows}`;
   renderWeekSelect();
   renderTimeline();
   renderCorrectionArchive();
+  const latestDate = data.dates.length ? data.dates[data.dates.length - 1].date : null;
   const defaultDate = state.selectedDate && data.dates.some((item) => item.date === state.selectedDate)
     ? state.selectedDate
-    : (data.dates[0] ? data.dates[0].date : null);
+    : (isLiveMode() ? latestDate : (data.dates[0] ? data.dates[0].date : null));
   if (defaultDate) {
     await loadDay(defaultDate);
   } else {
@@ -840,9 +990,11 @@ async function loadCalendarWindow(windowIndex = 0) {
       critical_count: 0,
       average_impact_score: 0,
       high_or_above: 0,
+      mode: state.mode,
     });
   }
   await loadReviewWindow();
+  applyModeUi();
 }
 
 function renderWeekSelect() {
@@ -855,17 +1007,18 @@ function renderWeekSelect() {
 }
 
 async function loadCalendarWindowsList() {
-  const data = await fetchJson("/dashboard/calendar/windows");
+  const data = await fetchJson(`${dashboardBasePath()}/calendar/windows`);
   state.calendarWindows = data.windows;
 }
 
 async function loadDay(dateKey, preferredEventId = null) {
-  const data = await fetchJson(`/dashboard/day/${dateKey}`);
+  const data = await fetchJson(`${dashboardBasePath()}/day/${encodeURIComponent(dateKey)}`);
   state.selectedDate = dateKey;
   state.dayData = data;
   state.viewedDates.add(dateKey);
-  state.reviewUnlocked = state.calendarDates.length > 0
-    && state.calendarDates.every((item) => state.viewedDates.has(item.date));
+  state.reviewUnlocked = isLiveMode()
+    ? true
+    : state.calendarDates.length > 0 && state.calendarDates.every((item) => state.viewedDates.has(item.date));
   updateReviewGate();
   renderTimeline();
   renderSummary(data.summary);
@@ -885,24 +1038,34 @@ async function loadDay(dateKey, preferredEventId = null) {
     clearRecommendationCard();
     fillDetailDock(null);
     updateRoutePlannerContext();
-    renderRouteEmptyState("No hotspots on this date", "Move the timeline to another date with active congestion events to enable route suggestions.");
+    renderRouteEmptyState(
+      isLiveMode() ? "No hotspots in this snapshot" : "No hotspots on this date",
+      isLiveMode()
+        ? "Wait for the next live refresh or switch to historical mode."
+        : "Move the timeline to another date with active congestion events to enable route suggestions.",
+    );
   }
 }
 
 async function loadReviewWindow() {
-  const data = await fetchJson(`/dashboard/review?window=${state.windowIndex}`);
-  renderReviewFeed(data.events);
+  const data = await fetchJson(`${dashboardBasePath()}/review?window=${state.windowIndex}`);
+  renderReviewFeed(data.events || [], data);
 }
 
 function renderTimeline() {
   elements.timelineBar.innerHTML = state.calendarDates
     .map((item) => {
-      const parts = timelineParts(item.date);
+      const parts = isLiveMode()
+        ? {
+          month: "LIVE",
+          day: item.slot_hour || item.slot_label || "--",
+        }
+        : timelineParts(item.date);
       return `
         <button class="timeline-chip ${item.date === state.selectedDate ? "active" : ""} ${state.viewedDates.has(item.date) ? "viewed" : ""}" data-date="${item.date}" type="button">
           <div class="chip-day">${parts.month}</div>
           <div class="chip-score">${parts.day}</div>
-          <div class="chip-events">&nbsp;</div>
+          <div class="chip-events">${isLiveMode() ? (item.slot_label || "") : "&nbsp;"}</div>
         </button>
       `;
     })
@@ -913,21 +1076,36 @@ function renderTimeline() {
 }
 
 function renderSummary(summary) {
-  elements.selectedDateLabel.textContent = summary.date ? formatDate(summary.date) : "--";
+  const isLiveSummary = summary.mode === "live" || isLiveMode();
+  elements.selectedDateLabel.textContent = isLiveSummary
+    ? `Today ${summary.slot_label || (summary.date ? formatDateTime(summary.date).split(",").slice(-1)[0].trim() : "")}`
+    : (summary.date ? formatDate(summary.date) : "--");
   elements.summaryEventCount.textContent = summary.event_count;
   elements.summaryCriticalCount.textContent = summary.critical_count;
   elements.summaryAverageImpact.textContent = summary.average_impact_score;
-  elements.bannerTitle.textContent = summary.critical_count > 0
-    ? `${summary.critical_count} critical zones require immediate watch`
-    : `${summary.event_count} hotspots mapped for ${summary.date ? formatDate(summary.date) : "the selected window"}`;
-  elements.bannerText.textContent = summary.event_count > 0
-    ? `${summary.high_or_above} hotspots are operating at high or critical congestion levels.`
-    : "No events available for the selected date window.";
+  if (isLiveSummary) {
+    const staleLabel = state.liveStatus?.stale ? " Cached live probe remains active." : "";
+    elements.bannerTitle.textContent = summary.critical_count > 0
+      ? `${summary.critical_count} live critical zones require immediate watch`
+      : `${summary.event_count} live hotspots monitored across Bengaluru today`;
+    elements.bannerText.textContent = summary.event_count > 0
+      ? `${summary.high_or_above} hotspots are currently operating at high or critical impact levels.${staleLabel}`
+      : `No live hotspots are currently active.${staleLabel}`;
+  } else {
+    elements.bannerTitle.textContent = summary.critical_count > 0
+      ? `${summary.critical_count} critical zones require immediate watch`
+      : `${summary.event_count} hotspots mapped for ${summary.date ? formatDate(summary.date) : "the selected window"}`;
+    elements.bannerText.textContent = summary.event_count > 0
+      ? `${summary.high_or_above} hotspots are operating at high or critical congestion levels.`
+      : "No events available for the selected date window.";
+  }
 }
 
 function renderEventFeed(events) {
   if (!events.length) {
-    elements.eventFeed.innerHTML = "<div class=\"event-item\"><strong>No hotspots for this date.</strong><p class=\"event-meta\">Move the timeline to another day.</p></div>";
+    elements.eventFeed.innerHTML = isLiveMode()
+      ? "<div class=\"event-item\"><strong>No live hotspots in the current snapshot.</strong><p class=\"event-meta\">Wait for the next refresh or switch back to the historical dashboard.</p></div>"
+      : "<div class=\"event-item\"><strong>No hotspots for this date.</strong><p class=\"event-meta\">Move the timeline to another day.</p></div>";
     return;
   }
   elements.eventFeed.innerHTML = events.map((event) => `
@@ -935,7 +1113,7 @@ function renderEventFeed(events) {
       <div class="event-item-top">
         <div>
           <strong>${event.title}</strong>${event.event_source === "manual" ? '<span class="event-source-pill">Manual</span>' : ""}
-          <p class="event-meta">${event.address}</p>
+          <p class="event-meta">${event.event_source === "live" ? `${event.corridor} - ${event.zone}` : event.address}</p>
         </div>
         ${impactBadge(event.impact_score, event.impact_color)}
       </div>
@@ -963,7 +1141,7 @@ function renderMap(events, policeMarkers) {
     marker.bindPopup(`
       <strong>${event.title}</strong><br />
       ${event.event_source === "manual" ? '<span class="popup-meta">Operator event</span><br />' : ""}
-      <span class="popup-meta">${event.address}</span><br />
+      <span class="popup-meta">${event.event_source === "live" ? `${event.corridor} - ${event.zone}` : event.address}</span><br />
       <span class="popup-meta">Impact ${event.impact_score} - ${event.risk_level}</span><br />
       <span class="popup-meta">${event.police_station.station_name}</span>
     `);
@@ -1011,7 +1189,9 @@ function setSelectedEvent(eventId) {
 
 function fillRecommendationCard(event) {
   elements.priorityHotspotTitle.textContent = event.title;
-  elements.priorityHotspotMeta.textContent = `${event.address} - ${event.corridor} - ${event.police_station.station_name}`;
+  elements.priorityHotspotMeta.textContent = event.event_source === "live"
+    ? `${event.corridor} - ${event.zone} - ${event.police_station.station_name}`
+    : `${event.address} - ${event.corridor} - ${event.police_station.station_name}`;
   elements.priorityImpactValue.textContent = event.impact_score;
   elements.priorityRiskValue.textContent = event.risk_level;
   elements.priorityOfficerValue.textContent = event.resource_plan.traffic_officers_required;
@@ -1030,7 +1210,9 @@ function fillDetailDock(event) {
     return;
   }
   elements.dockTitle.textContent = event.title;
-  elements.dockMeta.textContent = `${event.zone} - ${event.address}`;
+  elements.dockMeta.textContent = event.event_source === "live"
+    ? `${event.zone} - ${event.corridor}`
+    : `${event.zone} - ${event.address}`;
   elements.dockStation.textContent = event.police_station.station_name;
   elements.dockCorridor.textContent = event.corridor;
   elements.dockMarshals.textContent = event.resource_plan.traffic_marshals_required;
@@ -1041,6 +1223,11 @@ function fillDetailDock(event) {
 }
 
 function updateReviewGate() {
+  if (isLiveMode()) {
+    elements.reviewTabButton.classList.remove("locked");
+    elements.reviewGateText.textContent = "Weekly review stays as a placeholder in live mode. Switch back to historical mode to log reviewed outcomes and run correction.";
+    return;
+  }
   const unlocked = state.reviewUnlocked;
   elements.reviewTabButton.classList.toggle("locked", !unlocked);
   elements.reviewGateText.textContent = unlocked
@@ -1048,7 +1235,11 @@ function updateReviewGate() {
     : `Open all 7 dates in the current window to unlock review. Progress: ${state.viewedDates.size}/${state.calendarDates.length}.`;
 }
 
-function renderReviewFeed(events) {
+function renderReviewFeed(events, payload = {}) {
+  if (isLiveMode() || payload.placeholder) {
+    elements.reviewFeed.innerHTML = `<div class="review-item"><strong>Weekly review placeholder</strong><p class="review-meta">${payload.message || "Historical mode keeps the full weekly correction workflow."}</p></div>`;
+    return;
+  }
   if (!events.length) {
     elements.reviewFeed.innerHTML = "<div class=\"review-item\"><strong>No events in this review window.</strong></div>";
     return;
@@ -1252,7 +1443,7 @@ function setupTabs() {
   document.querySelectorAll(".tab-button").forEach((button) => {
     button.addEventListener("click", () => {
       const tab = button.dataset.tab;
-      if (tab === "review" && !state.reviewUnlocked) {
+      if (!isLiveMode() && tab === "review" && !state.reviewUnlocked) {
         showToast("Open all 7 dates in the current window to unlock weekly review.");
         return;
       }
@@ -1267,6 +1458,10 @@ function setupTabs() {
 }
 
 async function runWeeklyCorrection() {
+  if (isLiveMode()) {
+    showToast("Weekly correction is available in historical mode only.");
+    return;
+  }
   if (!state.reviewUnlocked) {
     showToast("Open all 7 dates in the current window to unlock weekly review.");
     return;
@@ -1309,6 +1504,7 @@ async function runWeeklyCorrection() {
 
 function setupControls() {
   setupTabs();
+  elements.goLiveButton.addEventListener("click", toggleDashboardMode);
   elements.addEventButton.addEventListener("click", openManualEventModal);
   elements.manualEventCloseButton.addEventListener("click", () => {
     closeManualEventModal();
@@ -1335,25 +1531,26 @@ function setupControls() {
     }
   });
   document.getElementById("stationAlertButton").addEventListener("click", () => {
-    if (!state.selectedEvent) {
-      showToast("Select a hotspot before raising a station alert.");
-      return;
-    }
-    showToast(`Alert relay prepared for ${state.selectedEvent.police_station.station_name}.`);
+    raiseStationAlert();
   });
   document.getElementById("previousWindowButton").addEventListener("click", async () => {
+    if (isLiveMode()) return;
     if (state.windowIndex === 0) return;
     state.viewedDates = new Set();
     state.reviewUnlocked = false;
     await loadCalendarWindow(state.windowIndex - 1);
   });
   document.getElementById("nextWindowButton").addEventListener("click", async () => {
+    if (isLiveMode()) return;
     if (state.windowIndex >= state.totalWindows - 1) return;
     state.viewedDates = new Set();
     state.reviewUnlocked = false;
     await loadCalendarWindow(state.windowIndex + 1);
   });
   elements.weekSelect.addEventListener("change", async (event) => {
+    if (isLiveMode()) {
+      return;
+    }
     state.viewedDates = new Set();
     state.reviewUnlocked = false;
     await loadCalendarWindow(Number(event.target.value));
@@ -1371,7 +1568,31 @@ function setupControls() {
   });
 }
 
+async function raiseStationAlert() {
+    if (!state.selectedEvent) {
+      showToast("Select a hotspot before raising a station alert.");
+      return;
+    }
+  const stationAlertButton = document.getElementById("stationAlertButton");
+  stationAlertButton.disabled = true;
+  stationAlertButton.textContent = "Sending Alert...";
+  try {
+    const data = await fetchJson("/alerts/station-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event_id: state.selectedEvent.event_id }),
+    });
+    showToast(`Station alert sent to ${data.recipient}.`);
+  } catch (error) {
+    showToast(error.message || "Unable to send station alert.");
+  } finally {
+    stationAlertButton.disabled = false;
+    stationAlertButton.textContent = "Raise Station Alert";
+  }
+}
+
 async function bootstrap() {
+  await loadLearningState();
   await loadEngineCatalog();
   renderCorrectionArchive();
   setupPanelResize();
@@ -1381,6 +1602,7 @@ async function bootstrap() {
   try {
     await loadCalendarWindowsList();
     await loadCalendarWindow(0);
+    applyModeUi();
   } catch (error) {
     elements.bannerTitle.textContent = "Dashboard could not load.";
     elements.bannerText.textContent = "Check the backend service and refresh the page.";

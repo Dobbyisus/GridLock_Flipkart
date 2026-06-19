@@ -13,18 +13,19 @@
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
     crossorigin=""
   />
-  <link rel="stylesheet" href="/static/styles.css?v=route-hotspot-v7" />
+  <link rel="stylesheet" href="/static/styles.css?v=live-dashboard-v2" />
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
       <div>
-        <p class="eyebrow">City Traffic Monitoring & Operations Platform</p>
-        <h1>Bangalore Traffic Dashboard</h1>
+        <p class="eyebrow">Traffic Monitoring & Operations Platform</p>
+        <h1><span class="brand-kannada">ಸಂಚಾರ</span><span class="brand-english">Sanchara</span></h1>
       </div>
       <div class="status-cluster">
+        <button type="button" class="mode-toggle-button" id="goLiveButton">Go Live</button>
         <span class="status-pill">Bengaluru</span>
-        <span class="status-pill">Monitoring Active</span>
+        <span class="status-pill" id="liveStatusPill">Historical Mode</span>
         <span class="status-pill">Connected</span>
       </div>
     </header>
@@ -324,7 +325,7 @@
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
     crossorigin=""
   ></script>
-  <script src="/static/app.js?v=manual-events-v1"></script>
+  <script src="/static/app.js?v=live-dashboard-v2"></script>
 </body>
 </html>
 

@@ -90,6 +90,7 @@ class GoogleRoutesClient:
         origin: Tuple[float, float],
         destination: Tuple[float, float],
         alternatives: int = 3,
+        routing_preference: str = "TRAFFIC_AWARE",
     ) -> Dict[str, Any]:
         if not self.api_key:
             return {
@@ -117,7 +118,7 @@ class GoogleRoutesClient:
                 }
             },
             "travelMode": "DRIVE",
-            "routingPreference": "TRAFFIC_AWARE",
+            "routingPreference": routing_preference,
             "computeAlternativeRoutes": candidate_limit > 1,
             "polylineEncoding": "ENCODED_POLYLINE",
             "polylineQuality": "OVERVIEW",

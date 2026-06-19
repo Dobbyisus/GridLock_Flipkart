@@ -90,6 +90,22 @@ textarea {
   line-height: 1.04;
   letter-spacing: -0.05em;
   font-weight: 800;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.brand-kannada {
+  display: inline-block;
+}
+
+.brand-english {
+  display: inline-block;
+  font-size: 0.44em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-soft);
 }
 
 .eyebrow,
@@ -107,6 +123,36 @@ textarea {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.mode-toggle-button {
+  min-height: 34px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--navy-900);
+  font-size: 0.79rem;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.mode-toggle-button:hover {
+  border-color: #bfd0ee;
+  background: #f8fbff;
+  transform: translateY(-1px);
+}
+
+.mode-toggle-button.is-live {
+  background: var(--navy-900);
+  color: #fff;
+  border-color: var(--navy-900);
 }
 
 .status-pill {
@@ -124,11 +170,11 @@ textarea {
   justify-content: center;
 }
 
-.status-pill:nth-child(2) {
+#liveStatusPill {
   padding-right: 26px;
 }
 
-.status-pill:nth-child(2)::after {
+#liveStatusPill::after {
   content: "⌄";
   position: absolute;
   right: 10px;
