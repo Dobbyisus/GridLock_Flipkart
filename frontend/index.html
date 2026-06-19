@@ -13,7 +13,7 @@
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
     crossorigin=""
   />
-  <link rel="stylesheet" href="/static/styles.css?v=live-dashboard-v2" />
+  <link rel="stylesheet" href="/static/styles.css?v=live-dashboard-v3" />
 </head>
 <body>
   <div class="app-shell">
@@ -89,6 +89,17 @@
               <span>Barricades</span>
               <strong id="priorityBarricadeValue">--</strong>
             </div>
+            <label class="alert-recipient-field" for="stationAlertRecipientInput">
+              Alert Recipient Email
+              <input
+                type="email"
+                id="stationAlertRecipientInput"
+                inputmode="email"
+                autocomplete="email"
+                placeholder="operator@traffic.gov.in"
+              />
+            </label>
+            <p class="alert-recipient-note" id="stationAlertRecipientNote">Add an email to enable station alerts for this session.</p>
             <button class="secondary-action" id="stationAlertButton" type="button">Raise Station Alert</button>
           </div>
 
@@ -350,7 +361,7 @@
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
     crossorigin=""
   ></script>
-  <script src="/static/app.js?v=live-dashboard-v2"></script>
+  <script src="/static/app.js?v=live-dashboard-v3"></script>
 </body>
 </html>
 

@@ -10,6 +10,7 @@ const EVENT_FEED_HEIGHT_DEFAULT = 132;
 const EVENT_FEED_HEIGHT_MIN = 96;
 const EVENT_FEED_HEIGHT_MAX = 360;
 const LIVE_STATUS_POLL_MS = 60000;
+const ALERT_RECIPIENT_SESSION_KEY = "gridlock-station-alert-recipient-v1";
 
 function delay(ms) {
   return new Promise((resolve) => {
@@ -34,6 +35,19 @@ function loadCorrectionHistory() {
 
 function loadStoredCorrectionSessionId() {
   return localStorage.getItem(CORRECTION_SESSION_KEY) || null;
+}
+
+function loadAlertRecipient() {
+  return sessionStorage.getItem(ALERT_RECIPIENT_SESSION_KEY) || "";
+}
+
+function persistAlertRecipient(value) {
+  const nextValue = String(value || "").trim();
+  if (nextValue) {
+    sessionStorage.setItem(ALERT_RECIPIENT_SESSION_KEY, nextValue);
+    return;
+  }
+  sessionStorage.removeItem(ALERT_RECIPIENT_SESSION_KEY);
 }
 
 function persistCorrectionSessionId(sessionId) {
@@ -87,6 +101,7 @@ const state = {
   liveStatus: null,
   liveRefreshSeenAt: null,
   livePollingHandle: null,
+  alertRecipientEmail: loadAlertRecipient(),
 };
 
 const map = L.map("map", {
@@ -123,6 +138,9 @@ const elements = {
   priorityRiskValue: document.getElementById("priorityRiskValue"),
   priorityOfficerValue: document.getElementById("priorityOfficerValue"),
   priorityBarricadeValue: document.getElementById("priorityBarricadeValue"),
+  stationAlertRecipientInput: document.getElementById("stationAlertRecipientInput"),
+  stationAlertRecipientNote: document.getElementById("stationAlertRecipientNote"),
+  stationAlertButton: document.getElementById("stationAlertButton"),
   eventFeed: document.getElementById("eventFeed"),
   routeResults: document.getElementById("routeResults"),
   routeOriginStation: document.getElementById("routeOriginStation"),
@@ -312,6 +330,52 @@ function showToast(message) {
   showToast.timer = setTimeout(() => {
     elements.toast.classList.remove("visible");
   }, 2200);
+}
+
+function formatApiErrorDetail(detail) {
+  if (typeof detail === "string") {
+    return detail;
+  }
+  if (Array.isArray(detail)) {
+    const firstItem = detail[0];
+    if (firstItem?.msg) {
+      return String(firstItem.msg);
+    }
+    return detail.map((item) => {
+      if (typeof item === "string") {
+        return item;
+      }
+      if (item?.msg) {
+        return String(item.msg);
+      }
+      return JSON.stringify(item);
+    }).join(", ");
+  }
+  if (detail && typeof detail === "object") {
+    if (detail.msg) {
+      return String(detail.msg);
+    }
+    return JSON.stringify(detail);
+  }
+  return String(detail);
+}
+
+function updateStationAlertUi() {
+  const recipientEmail = String(state.alertRecipientEmail || "").trim();
+  const hasRecipient = Boolean(recipientEmail);
+  if (elements.stationAlertRecipientInput && elements.stationAlertRecipientInput.value !== recipientEmail) {
+    elements.stationAlertRecipientInput.value = recipientEmail;
+  }
+  if (elements.stationAlertRecipientNote) {
+    elements.stationAlertRecipientNote.textContent = hasRecipient
+      ? "Station alerts will use this email for the current session."
+      : "Add an email to enable station alerts for this session.";
+  }
+  if (elements.stationAlertButton) {
+    elements.stationAlertButton.title = hasRecipient
+      ? "Send the selected hotspot summary to this email"
+      : "Add an email to enable station alerts";
+  }
 }
 
 function formatDate(dateText) {
@@ -659,6 +723,32 @@ function renderCorrectionFailure(windowInfo, error) {
   openCorrectionPanel();
 }
 
+function renderCorrectionNoFeedback(windowInfo) {
+  const record = {
+    weekKey: weekKey(windowInfo),
+    windowIndex: windowInfo.windowIndex,
+    windowLabel: windowInfo.label,
+    startDate: windowInfo.startDate,
+    endDate: windowInfo.endDate,
+    ranAt: new Date().toISOString(),
+    retrained: false,
+    headline: "Log at least one weekly review before running correction.",
+    message: "Weekly correction needs post-event feedback from the review cards before any model update can run.",
+    nextDueAt: null,
+    feedbackRecords: 0,
+    samplesUsed: 0,
+    meanError: null,
+    meanAbsoluteError: null,
+    biasShift: null,
+    biasAfter: 0,
+    lastRetrainedAt: null,
+    weightChanges: [],
+    causeChanges: [],
+  };
+  upsertCorrectionRecord(record);
+  renderCorrectionSummary(record);
+}
+
 function riskBadge(score, riskLevel) {
   const background = score >= 82
     ? "#f4d7d2"
@@ -722,7 +812,7 @@ async function fetchJson(url, options) {
     try {
       const payload = await response.json();
       if (payload?.detail) {
-        message = String(payload.detail);
+        message = formatApiErrorDetail(payload.detail);
       }
     } catch (error) {
       // ignore non-json error bodies
@@ -1030,6 +1120,7 @@ function clearRecommendationCard() {
   elements.priorityRiskValue.textContent = "--";
   elements.priorityOfficerValue.textContent = "--";
   elements.priorityBarricadeValue.textContent = "--";
+  updateStationAlertUi();
 }
 
 function updateRoutePlannerContext() {
@@ -1363,6 +1454,7 @@ function fillRecommendationCard(event) {
   elements.priorityRiskValue.textContent = event.risk_level;
   elements.priorityOfficerValue.textContent = event.resource_plan.traffic_officers_required;
   elements.priorityBarricadeValue.textContent = event.resource_plan.barricades_required;
+  updateStationAlertUi();
 }
 
 function fillDetailDock(event) {
@@ -1657,6 +1749,12 @@ async function runWeeklyCorrection() {
   elements.forceRetrainButton.disabled = false;
   elements.forceRetrainButton.textContent = "Run Weekly Correction";
 
+  if (!beforeState || Number(beforeState.feedback_records || 0) === 0) {
+    renderCorrectionNoFeedback(state.currentWindow);
+    showToast("Log at least one weekly review before running correction.");
+    return;
+  }
+
   if (!correctionResponse.ok) {
     renderCorrectionFailure(state.currentWindow, correctionResponse.error);
     showToast("Unable to run weekly correction.");
@@ -1704,7 +1802,12 @@ function setupControls() {
       map.flyTo([state.selectedEvent.latitude, state.selectedEvent.longitude], 13, { duration: 0.8 });
     }
   });
-  document.getElementById("stationAlertButton").addEventListener("click", () => {
+  elements.stationAlertRecipientInput.addEventListener("input", (event) => {
+    state.alertRecipientEmail = String(event.target.value || "").trim();
+    persistAlertRecipient(state.alertRecipientEmail);
+    updateStationAlertUi();
+  });
+  elements.stationAlertButton.addEventListener("click", () => {
     raiseStationAlert();
   });
   document.getElementById("previousWindowButton").addEventListener("click", async () => {
@@ -1743,29 +1846,39 @@ function setupControls() {
 }
 
 async function raiseStationAlert() {
-    if (!state.selectedEvent) {
-      showToast("Select a hotspot before raising a station alert.");
-      return;
-    }
-  const stationAlertButton = document.getElementById("stationAlertButton");
+  if (!state.selectedEvent) {
+    showToast("Select a hotspot before raising a station alert.");
+    return;
+  }
+  const recipientEmail = String(state.alertRecipientEmail || "").trim();
+  if (!recipientEmail) {
+    showToast("Add an alert recipient email to use this feature.");
+    updateStationAlertUi();
+    return;
+  }
+  const stationAlertButton = elements.stationAlertButton;
   stationAlertButton.disabled = true;
   stationAlertButton.textContent = "Sending Alert...";
   try {
     const data = await fetchJson("/alerts/station-email", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ event_id: state.selectedEvent.event_id }),
+      body: JSON.stringify({
+        event_id: state.selectedEvent.event_id,
+        recipient_email: recipientEmail,
+      }),
     });
     showToast(`Station alert sent to ${data.recipient}.`);
   } catch (error) {
     showToast(error.message || "Unable to send station alert.");
   } finally {
-    stationAlertButton.disabled = false;
     stationAlertButton.textContent = "Raise Station Alert";
+    updateStationAlertUi();
   }
 }
 
 async function bootstrap() {
+  updateStationAlertUi();
   await loadLearningState();
   await loadEngineCatalog();
   renderCorrectionArchive();

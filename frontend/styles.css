@@ -435,6 +435,22 @@ label {
   border-bottom: 0;
 }
 
+.alert-recipient-field {
+  margin-top: 10px;
+}
+
+.alert-recipient-field input {
+  margin-top: 2px;
+}
+
+.alert-recipient-note {
+  margin: 8px 0 0;
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
 .section-head,
 .event-item-top,
 .review-item-top,
