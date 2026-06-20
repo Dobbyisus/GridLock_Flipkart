@@ -449,12 +449,46 @@ function formatDateTime(dateText) {
   });
 }
 
+function formatLiveSummaryLabel(dateText, slotLabel) {
+  if (!dateText) {
+    return slotLabel ? `Today ${slotLabel}` : "Today";
+  }
+  const date = new Date(dateText);
+  if (Number.isNaN(date.getTime())) {
+    return slotLabel ? `Today ${slotLabel}` : "Today";
+  }
+  return `Today ${date.toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+}
+
 function timelineParts(dateText) {
   const source = String(dateText || "");
   const date = new Date(source.includes("T") ? source : `${source}T00:00:00`);
   return {
     month: date.toLocaleDateString("en-IN", { month: "short" }).toUpperCase(),
     day: date.toLocaleDateString("en-IN", { day: "2-digit" }),
+  };
+}
+
+function liveTimelineParts(snapshot) {
+  const source = String(snapshot?.captured_at || snapshot?.date || "");
+  const date = new Date(source);
+  if (Number.isNaN(date.getTime())) {
+    return {
+      month: "LIVE",
+      day: "--",
+      detail: snapshot?.slot_label || "",
+    };
+  }
+  return {
+    month: date.toLocaleDateString("en-IN", { month: "short" }).toUpperCase(),
+    day: date.toLocaleDateString("en-IN", { day: "2-digit" }),
+    detail: snapshot?.slot_label || date.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
   };
 }
 
@@ -1340,19 +1374,20 @@ async function loadReviewWindow() {
 }
 
 function renderTimeline() {
-  elements.timelineBar.innerHTML = state.calendarDates
+  const timelineItems = isLiveMode()
+    ? (state.calendarDates.length ? [state.calendarDates[state.calendarDates.length - 1]] : [])
+    : state.calendarDates;
+
+  elements.timelineBar.innerHTML = timelineItems
     .map((item) => {
       const parts = isLiveMode()
-        ? {
-          month: "LIVE",
-          day: item.slot_hour || item.slot_label || "--",
-        }
+        ? liveTimelineParts(item)
         : timelineParts(item.date);
       return `
         <button class="timeline-chip ${item.date === state.selectedDate ? "active" : ""} ${state.viewedDates.has(item.date) ? "viewed" : ""}" data-date="${item.date}" type="button">
           <div class="chip-day">${parts.month}</div>
           <div class="chip-score">${parts.day}</div>
-          <div class="chip-events">${isLiveMode() ? (item.slot_label || "") : "&nbsp;"}</div>
+          <div class="chip-events">${isLiveMode() ? (parts.detail || "") : "&nbsp;"}</div>
         </button>
       `;
     })
@@ -1365,7 +1400,7 @@ function renderTimeline() {
 function renderSummary(summary) {
   const isLiveSummary = summary.mode === "live" || isLiveMode();
   elements.selectedDateLabel.textContent = isLiveSummary
-    ? `Today ${summary.slot_label || (summary.date ? formatDateTime(summary.date).split(",").slice(-1)[0].trim() : "")}`
+    ? formatLiveSummaryLabel(summary.date, summary.slot_label)
     : (summary.date ? formatDate(summary.date) : "--");
   elements.summaryEventCount.textContent = summary.event_count;
   elements.summaryCriticalCount.textContent = summary.critical_count;
