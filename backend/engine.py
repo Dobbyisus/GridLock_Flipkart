@@ -414,49 +414,8 @@ class GridlockRecommendationEngine:
         return dt
 
     def _load_manual_events(self) -> List[Dict[str, Any]]:
-        if not self.manual_events_path.exists():
-            self._save_json(self.manual_events_path, [])
-            return []
-        try:
-            raw_events = json.loads(self.manual_events_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return []
-        events: List[Dict[str, Any]] = []
-        for row in raw_events:
-            latitude = safe_float(row.get("latitude"))
-            longitude = safe_float(row.get("longitude"))
-            start_dt = self._parse_manual_event_datetime(row.get("start_datetime"))
-            if latitude is None or longitude is None or start_dt is None:
-                continue
-            end_latitude = safe_float(row.get("end_latitude"))
-            end_longitude = safe_float(row.get("end_longitude"))
-            events.append(
-                {
-                    "id": clean_text(row.get("id"), f"MANUAL_{uuid.uuid4().hex[:10].upper()}"),
-                    "address": clean_text(row.get("address")),
-                    "description": clean_text(row.get("description")),
-                    "latitude": latitude,
-                    "longitude": longitude,
-                    "end_latitude": end_latitude,
-                    "end_longitude": end_longitude,
-                    "event_cause": clean_text(row.get("event_cause"), "others").lower(),
-                    "priority": clean_text(row.get("priority"), "Low").title(),
-                    "requires_road_closure": safe_bool(row.get("requires_road_closure")),
-                    "event_type": clean_text(row.get("event_type"), "planned").lower(),
-                    "status": clean_text(row.get("status"), "scheduled").lower(),
-                    "corridor": clean_text(row.get("corridor")),
-                    "junction": clean_text(row.get("junction")),
-                    "zone": clean_text(row.get("zone")),
-                    "police_station": clean_text(row.get("police_station"), "Control"),
-                    "grid_id": clean_text(row.get("grid_id"), f"{round(latitude, 2):.2f}_{round(longitude, 2):.2f}"),
-                    "start_datetime": start_dt,
-                    "duration_hours": safe_float(row.get("duration_hours")),
-                    "path_distance_km": safe_float(row.get("path_distance_km"), 0.0) or 0.0,
-                    "expected_attendance": int(row["expected_attendance"]) if row.get("expected_attendance") not in (None, "") else None,
-                    "event_source": "manual",
-                }
-            )
-        return events
+        # Demo manual events stay in memory only and reset on backend restart.
+        return []
 
     def _serialize_manual_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
         return {
@@ -484,10 +443,8 @@ class GridlockRecommendationEngine:
         }
 
     def _save_manual_events(self) -> None:
-        self._save_json(
-            self.manual_events_path,
-            [self._serialize_manual_event(event) for event in self.manual_events],
-        )
+        # Demo manual events are intentionally not persisted to disk.
+        return None
 
     def _build_event_lookup(self) -> Dict[str, Dict[str, Any]]:
         lookup = {event["id"]: event for event in self.events}
